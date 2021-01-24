@@ -1,0 +1,16 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "java",
+            "name": "Launch Crabstero",
+            "request": "launch",
+            "mainClass": "dev.logal.crabstero.Crabstero",
+            "projectName": "Crabstero",
+            "env": {
+                "TOKEN": "",
+                "REDIS_HOST": "127.0.0.1"
+            }
+        }
+    ]
+}

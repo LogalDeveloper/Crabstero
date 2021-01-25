@@ -36,7 +36,7 @@ public final class MessageCreate implements MessageCreateListener {
 
         final Message message = event.getMessage();
         if (message.getMentionedUsers().contains(event.getApi().getYourself())) {
-            MarkovChainMessages.sendNewMessage(serverTextChannel.get());
+            MarkovChainMessages.replyToMessage(message);
             return;
         }
 

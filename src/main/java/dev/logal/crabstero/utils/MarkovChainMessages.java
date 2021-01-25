@@ -63,8 +63,8 @@ public class MarkovChainMessages {
 
         if (rng.nextDouble() >= 0.95 && channel.canYouEmbedLinks()) {
             final EmbedBuilder embed = new EmbedBuilder();
-            embed.setTitle(markovChain.generate(100, 150));
-            embed.setDescription(markovChain.generate(100, 200));
+            embed.setTitle(markovChain.generate(200, 300));
+            embed.setDescription(markovChain.generate(300, 500));
             try (final Jedis jedis = Crabstero.getJedis()) {
                 final List<String> embedImageURLs = jedis.lrange(channelID + ":images", 0, -1);
 

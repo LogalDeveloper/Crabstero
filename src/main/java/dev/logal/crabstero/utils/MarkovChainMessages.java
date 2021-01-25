@@ -75,8 +75,7 @@ public class MarkovChainMessages {
             message.setEmbed(embed);
         }
 
-        // This doesn't work yet due to bug in Javacord. See Javacord issue #595.
-        // message.setAllowedMentions(allowedMentions);
+        message.setAllowedMentions(allowedMentions);
         message.send(channel).exceptionally(ExceptionLogger.get());
     }
 

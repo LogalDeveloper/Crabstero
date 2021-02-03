@@ -1,17 +1,7 @@
-buildscript {
-    repositories {
-        jcenter()
-    }
-
-    dependencies {
-        classpath 'com.github.jengelman.gradle.plugins:shadow:6.1.0'
-    }
+plugins {
+    id 'java'
+    id 'application'
 }
-
-apply plugin: 'java'
-apply plugin: 'com.github.johnrengelman.shadow'
-
-compileJava.options.encoding = 'UTF-8'
 
 repositories {
     mavenCentral()
@@ -19,14 +9,11 @@ repositories {
 }
 
 dependencies {
-    implementation 'com.github.Javacord.Javacord:javacord:development-SNAPSHOT'
+    implementation 'com.github.Javacord:Javacord:19bf2f3111'
     implementation 'redis.clients:jedis:3.5.1'
 
     implementation 'org.slf4j:slf4j-simple:1.7.30'
 }
 
-jar {
-    manifest {
-        attributes 'Main-Class': 'dev.logal.crabstero.Crabstero'
-    }
-}
+compileJava.options.encoding = 'UTF-8'
+mainClassName = 'dev.logal.crabstero.Crabstero'

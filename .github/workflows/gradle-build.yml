@@ -22,3 +22,8 @@ jobs:
 
       - name: "Build with Gradle"
         run: "gradle build"
+
+      - name: "Upload Artifacts"
+        uses: "actions/upload-artifact@v2"
+        with:
+          path: "build/distributions/Crabstero.*"

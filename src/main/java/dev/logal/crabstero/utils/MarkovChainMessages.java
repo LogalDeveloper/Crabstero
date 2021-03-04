@@ -18,7 +18,7 @@ import java.security.SecureRandom;
 import java.util.List;
 import java.util.Random;
 
-import org.javacord.api.entity.channel.TextChannel;
+import org.javacord.api.entity.channel.ServerTextChannel;
 import org.javacord.api.entity.message.Message;
 import org.javacord.api.entity.message.MessageAuthor;
 import org.javacord.api.entity.message.MessageBuilder;
@@ -47,19 +47,17 @@ public class MarkovChainMessages {
         throw new UnsupportedOperationException();
     }
 
-    public static void replyToMessage(final Message message) {
-        final TextChannel channel = message.getChannel();
+    public static void sendNewMessage(final ServerTextChannel channel) {
         if (!channel.canYouWrite()) {
             return;
         }
 
         final long channelID = channel.getId();
 
-        final MessageBuilder response = new MessageBuilder();
+        final MessageBuilder message = new MessageBuilder();
         final MarkovChain markovChain = new MarkovChain(channelID);
 
-        response.replyTo(message);
-        response.setContent(markovChain.generate(750, 1000));
+        message.setContent(markovChain.generate(750, 1000));
 
         if (rng.nextDouble() >= 0.95 && channel.canYouEmbedLinks()) {
             final EmbedBuilder embed = new EmbedBuilder();
@@ -74,11 +72,12 @@ public class MarkovChainMessages {
             }
 
             embed.setFooter("Crabstero is a logal.dev project", "https://logal.dev/images/logo.png");
-            response.setEmbed(embed);
+            message.setEmbed(embed);
         }
 
-        response.setAllowedMentions(allowedMentions);
-        response.send(channel).exceptionally(ExceptionLogger.get());
+        // This doesn't work yet due to bug in Javacord. See Javacord issue #595.
+        // message.setAllowedMentions(allowedMentions);
+        message.send(channel).exceptionally(ExceptionLogger.get());
     }
 
     public static void ingestMessage(final Message message) {

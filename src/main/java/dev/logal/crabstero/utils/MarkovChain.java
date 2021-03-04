@@ -32,7 +32,19 @@ public final class MarkovChain {
         this.id = id;
     }
 
-    public final void ingest(String sentence) {
+    public final void ingest(String paragraph) {
+        if (!isCompleteSentence(paragraph)) {
+            paragraph += DEFAULT_SENTENCE_END;
+        }
+
+        final String[] sentences = paragraph.trim().replaceAll(" +", " ").replaceAll("\n", " ").split("(?<=[.!?]) ");
+
+        for (int i = 0; i < sentences.length; i++) {
+            this.ingestSentence(sentences[i]);
+        }
+    }
+
+    private final void ingestSentence(String sentence) {
         if (!isCompleteSentence(sentence)) {
             sentence += DEFAULT_SENTENCE_END;
         }
@@ -57,7 +69,7 @@ public final class MarkovChain {
 
         try (final Jedis jedis = Crabstero.getJedis()) {
             if (!jedis.exists(this.id + ":start")) {
-                this.ingest("Hello world!");
+                this.ingestSentence("Hello world!");
             }
 
             String word = "";

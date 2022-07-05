@@ -5,14 +5,13 @@ plugins {
 
 repositories {
     mavenCentral()
-    maven { url 'https://jitpack.io' }
 }
 
 dependencies {
-    implementation 'com.github.LogalDeveloper:Javacord:31bffc2cad'
-    implementation 'redis.clients:jedis:3.6.0'
+    implementation 'org.javacord:javacord:3.5.0'
+    implementation 'redis.clients:jedis:3.9.0'
 
-    implementation 'org.slf4j:slf4j-simple:1.7.30'
+    implementation 'org.slf4j:slf4j-simple:1.7.36'
 }
 
 compileJava.options.encoding = 'UTF-8'

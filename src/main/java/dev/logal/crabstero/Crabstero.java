@@ -9,7 +9,6 @@
 package dev.logal.crabstero;
 
 import dev.logal.crabstero.listeners.*;
-import org.javacord.api.AccountType;
 import org.javacord.api.DiscordApi;
 import org.javacord.api.DiscordApiBuilder;
 import org.javacord.api.Javacord;
@@ -41,7 +40,6 @@ public final class Crabstero {
 
         final DiscordApiBuilder builder = new DiscordApiBuilder();
 
-        builder.setAccountType(AccountType.BOT);
         builder.setToken(token);
         builder.setTrustAllCertificates(false);
 

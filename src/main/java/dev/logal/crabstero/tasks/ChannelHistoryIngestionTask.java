@@ -21,49 +21,49 @@ import java.util.Iterator;
 import java.util.stream.Stream;
 
 public final class ChannelHistoryIngestionTask implements Runnable {
-	private static final String INGESTED_CHANNELS_KEY = "ingestedChannels";
+    private static final String INGESTED_CHANNELS_KEY = "ingestedChannels";
 
-	private static final Logger logger = LoggerFactory.getLogger(ChannelHistoryIngestionTask.class);
+    private static final Logger logger = LoggerFactory.getLogger(ChannelHistoryIngestionTask.class);
 
-	private final ServerTextChannel channel;
+    private final ServerTextChannel channel;
 
-	public ChannelHistoryIngestionTask(final ServerTextChannel channel){
-		this.channel = channel;
-	}
+    public ChannelHistoryIngestionTask(final ServerTextChannel channel) {
+        this.channel = channel;
+    }
 
-	@Override
-	public void run(){
-		try {
-			if (!this.channel.canYouReadMessageHistory()){
-				logger.warn("Unable to ingest text channel history due to lacking permissions. Ignoring. (Name: \"" + this.channel.getName() + "\" | ID: " + this.channel.getIdAsString() + " | Server ID: " + this.channel.getServer().getIdAsString() + ")");
-				return;
-			}
+    @Override
+    public void run() {
+        try {
+            if (!this.channel.canYouReadMessageHistory()) {
+                logger.warn("Unable to ingest text channel history due to lacking permissions. Ignoring. (Name: \"" + this.channel.getName() + "\" | ID: " + this.channel.getIdAsString() + " | Server ID: " + this.channel.getServer().getIdAsString() + ")");
+                return;
+            }
 
-			try (final Jedis jedis = Crabstero.getJedis()){
-				if (jedis.lrange(INGESTED_CHANNELS_KEY, 0, -1).contains(this.channel.getIdAsString())){
-					return;
-				} else {
-					final Pipeline pipeline = jedis.pipelined();
-					pipeline.lpush(INGESTED_CHANNELS_KEY, this.channel.getIdAsString());
-					logger.info("Starting ingestion of text channel history. (Name: \"" + this.channel.getName() + "\" | ID: " + this.channel.getIdAsString() + " | Server ID: " + this.channel.getServer().getIdAsString() + ")");
-				}
-			}
+            try (final Jedis jedis = Crabstero.getJedis()) {
+                if (jedis.lrange(INGESTED_CHANNELS_KEY, 0, -1).contains(this.channel.getIdAsString())) {
+                    return;
+                } else {
+                    final Pipeline pipeline = jedis.pipelined();
+                    pipeline.lpush(INGESTED_CHANNELS_KEY, this.channel.getIdAsString());
+                    logger.info("Starting ingestion of text channel history. (Name: \"" + this.channel.getName() + "\" | ID: " + this.channel.getIdAsString() + " | Server ID: " + this.channel.getServer().getIdAsString() + ")");
+                }
+            }
 
-			try (final Stream<Message> history = this.channel.getMessagesAsStream()){
-				final Iterator<Message> iterator = history.iterator();
-				int i = 0;
-				while (iterator.hasNext()){
-					i++;
-					MarkovChainMessages.ingestMessage(iterator.next());
-					if (i == Crabstero.maximumMessagesPerChannel){
-						break;
-					}
-				}
+            try (final Stream<Message> history = this.channel.getMessagesAsStream()) {
+                final Iterator<Message> iterator = history.iterator();
+                int i = 0;
+                while (iterator.hasNext()) {
+                    i++;
+                    MarkovChainMessages.ingestMessage(iterator.next());
+                    if (i == Crabstero.maximumMessagesPerChannel) {
+                        break;
+                    }
+                }
 
-				logger.info("Ingestion of text channel history complete. " + i + " messages ingested. (Name: \"" + this.channel.getName() + "\" | ID: " + this.channel.getIdAsString() + " | Server ID: " + this.channel.getServer().getIdAsString() + ")");
-			}
-		} catch (final Throwable exception){
-			logger.error("An error occured while ingesting text channel history! (Name: \"" + this.channel.getName() + "\" | ID: " + this.channel.getIdAsString() + " | Server ID: " + this.channel.getServer().getIdAsString() + ")", exception);
-		}
-	}
+                logger.info("Ingestion of text channel history complete. " + i + " messages ingested. (Name: \"" + this.channel.getName() + "\" | ID: " + this.channel.getIdAsString() + " | Server ID: " + this.channel.getServer().getIdAsString() + ")");
+            }
+        } catch (final Throwable exception) {
+            logger.error("An error occured while ingesting text channel history! (Name: \"" + this.channel.getName() + "\" | ID: " + this.channel.getIdAsString() + " | Server ID: " + this.channel.getServer().getIdAsString() + ")", exception);
+        }
+    }
 }

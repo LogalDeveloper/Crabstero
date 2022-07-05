@@ -19,22 +19,22 @@ import org.javacord.api.listener.message.MessageCreateListener;
 import java.util.Optional;
 
 public final class MessageCreate implements MessageCreateListener {
-	@Override
-	public void onMessageCreate(final MessageCreateEvent event){
-		final MessageAuthor author = event.getMessageAuthor();
-		final Optional<ServerTextChannel> serverTextChannel = event.getChannel().asServerTextChannel();
-		if (!serverTextChannel.isPresent() || author.isBotUser() || author.isWebhook() || author.isYourself()){
-			return;
-		}
+    @Override
+    public void onMessageCreate(final MessageCreateEvent event) {
+        final MessageAuthor author = event.getMessageAuthor();
+        final Optional<ServerTextChannel> serverTextChannel = event.getChannel().asServerTextChannel();
+        if (!serverTextChannel.isPresent() || author.isBotUser() || author.isWebhook() || author.isYourself()) {
+            return;
+        }
 
-		final Message message = event.getMessage();
-		if (message.getMentionedUsers().contains(event.getApi().getYourself())){
-			MarkovChainMessages.replyToMessage(message);
-			return;
-		}
+        final Message message = event.getMessage();
+        if (message.getMentionedUsers().contains(event.getApi().getYourself())) {
+            MarkovChainMessages.replyToMessage(message);
+            return;
+        }
 
-		if (message.getType() == MessageType.NORMAL){
-			MarkovChainMessages.ingestMessage(message);
-		}
-	}
+        if (message.getType() == MessageType.NORMAL) {
+            MarkovChainMessages.ingestMessage(message);
+        }
+    }
 }

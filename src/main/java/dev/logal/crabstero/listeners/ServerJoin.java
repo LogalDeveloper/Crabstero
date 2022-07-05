@@ -21,27 +21,27 @@ import org.slf4j.LoggerFactory;
 import java.awt.*;
 
 public final class ServerJoin implements ServerJoinListener {
-	private static final Logger logger = LoggerFactory.getLogger(ServerJoin.class);
+    private static final Logger logger = LoggerFactory.getLogger(ServerJoin.class);
 
-	@Override
-	public void onServerJoin(final ServerJoinEvent event){
-		final Server server = event.getServer();
-		logger.info("Joined new server! (Name: \"" + server.getName() + "\" | ID: " + server.getIdAsString() + ")");
+    @Override
+    public void onServerJoin(final ServerJoinEvent event) {
+        final Server server = event.getServer();
+        logger.info("Joined new server! (Name: \"" + server.getName() + "\" | ID: " + server.getIdAsString() + ")");
 
-		final EmbedBuilder embed = new EmbedBuilder();
-		embed.setTitle("Joined New Server");
-		embed.setColor(new Color(255, 165, 0));
-		embed.addField(server.getName() + " (" + server.getIdAsString() + ")", server.getMemberCount() + " members");
-		server.getIcon().ifPresent((icon) -> {
-			embed.setImage(icon.getUrl().toString());
-		});
-		embed.setFooter(event.getApi().getServers().size() + " total servers");
-		event.getApi().getOwner().thenAcceptAsync((owner) -> {
-			owner.sendMessage(embed).exceptionally(ExceptionLogger.get());
-		});
+        final EmbedBuilder embed = new EmbedBuilder();
+        embed.setTitle("Joined New Server");
+        embed.setColor(new Color(255, 165, 0));
+        embed.addField(server.getName() + " (" + server.getIdAsString() + ")", server.getMemberCount() + " members");
+        server.getIcon().ifPresent((icon) -> {
+            embed.setImage(icon.getUrl().toString());
+        });
+        embed.setFooter(event.getApi().getServers().size() + " total servers");
+        event.getApi().getOwner().thenAcceptAsync((owner) -> {
+            owner.sendMessage(embed).exceptionally(ExceptionLogger.get());
+        });
 
-		server.getTextChannels().forEach((channel) -> {
-			Crabstero.submitTask(new ChannelHistoryIngestionTask(channel));
-		});
-	}
+        server.getTextChannels().forEach((channel) -> {
+            Crabstero.submitTask(new ChannelHistoryIngestionTask(channel));
+        });
+    }
 }

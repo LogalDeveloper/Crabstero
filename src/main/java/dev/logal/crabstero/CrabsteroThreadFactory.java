@@ -11,14 +11,14 @@ package dev.logal.crabstero;
 import java.util.concurrent.ThreadFactory;
 
 public final class CrabsteroThreadFactory implements ThreadFactory {
-	private static int threadNumber = 1;
+    private static int threadNumber = 1;
 
-	@Override
-	public Thread newThread(final Runnable runnable){
-		final Thread thread = new Thread(runnable);
+    @Override
+    public Thread newThread(final Runnable runnable) {
+        final Thread thread = new Thread(runnable);
 
-		thread.setName("Crabstero Worker Thread - " + threadNumber++);
+        thread.setName("Crabstero Worker Thread - " + threadNumber++);
 
-		return thread;
-	}
+        return thread;
+    }
 }

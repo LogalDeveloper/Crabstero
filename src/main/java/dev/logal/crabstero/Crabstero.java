@@ -23,55 +23,55 @@ import redis.clients.jedis.JedisPoolConfig;
 import java.util.concurrent.*;
 
 public final class Crabstero {
-	public static final int maximumMessagesPerChannel = 50000;
+    public static final int maximumMessagesPerChannel = 50000;
 
-	private static final Logger logger = LoggerFactory.getLogger(Crabstero.class);
+    private static final Logger logger = LoggerFactory.getLogger(Crabstero.class);
 
-	private static final String token = System.getenv("TOKEN");
-	private static final JedisPool jedisPool = new JedisPool(new JedisPoolConfig(), System.getenv("REDIS_HOST"));
+    private static final String token = System.getenv("TOKEN");
+    private static final JedisPool jedisPool = new JedisPool(new JedisPoolConfig(), System.getenv("REDIS_HOST"));
 
-	private static final ScheduledExecutorService workerPool = Executors.newScheduledThreadPool(4, new CrabsteroThreadFactory());
+    private static final ScheduledExecutorService workerPool = Executors.newScheduledThreadPool(4, new CrabsteroThreadFactory());
 
-	private Crabstero(){
-		throw new UnsupportedOperationException();
-	}
+    private Crabstero() {
+        throw new UnsupportedOperationException();
+    }
 
-	public static void main(final String[] arguments){
-		logger.info(Javacord.USER_AGENT);
+    public static void main(final String[] arguments) {
+        logger.info(Javacord.USER_AGENT);
 
-		final DiscordApiBuilder builder = new DiscordApiBuilder();
+        final DiscordApiBuilder builder = new DiscordApiBuilder();
 
-		builder.setAccountType(AccountType.BOT);
-		builder.setToken(token);
-		builder.setTrustAllCertificates(false);
+        builder.setAccountType(AccountType.BOT);
+        builder.setToken(token);
+        builder.setTrustAllCertificates(false);
 
-		builder.setWaitForServersOnStartup(false);
-		builder.setWaitForUsersOnStartup(false);
+        builder.setWaitForServersOnStartup(false);
+        builder.setWaitForUsersOnStartup(false);
 
-		builder.setIntents(Intent.GUILDS, Intent.GUILD_MESSAGES);
+        builder.setIntents(Intent.GUILDS, Intent.GUILD_MESSAGES);
 
-		builder.addListener(new MessageCreate());
-		builder.addListener(new RoleChangePermissions());
-		builder.addListener(new ServerBecomesAvailable());
-		builder.addListener(new ServerChannelChangeOverwrittenPermissions());
-		builder.addListener(new ServerJoin());
-		builder.addListener(new UserRoleAdd());
+        builder.addListener(new MessageCreate());
+        builder.addListener(new RoleChangePermissions());
+        builder.addListener(new ServerBecomesAvailable());
+        builder.addListener(new ServerChannelChangeOverwrittenPermissions());
+        builder.addListener(new ServerJoin());
+        builder.addListener(new UserRoleAdd());
 
-		builder.setRecommendedTotalShards();
+        builder.setRecommendedTotalShards();
 
-		final DiscordApi api = builder.login().join();
-		api.setMessageCacheSize(0, 1);
-	}
+        final DiscordApi api = builder.login().join();
+        api.setMessageCacheSize(0, 1);
+    }
 
-	public static Future<?> submitTask(final Runnable task){
-		return workerPool.submit(task);
-	}
+    public static Future<?> submitTask(final Runnable task) {
+        return workerPool.submit(task);
+    }
 
-	public static ScheduledFuture<?> scheduleTask(final Runnable task, final long delay, final TimeUnit unit){
-		return workerPool.schedule(task, delay, unit);
-	}
+    public static ScheduledFuture<?> scheduleTask(final Runnable task, final long delay, final TimeUnit unit) {
+        return workerPool.schedule(task, delay, unit);
+    }
 
-	public static Jedis getJedis(){
-		return jedisPool.getResource();
-	}
+    public static Jedis getJedis() {
+        return jedisPool.getResource();
+    }
 }

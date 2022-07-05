@@ -46,7 +46,13 @@ public class MarkovChainMessages {
             return;
         }
 
-        final long channelID = channel.getId();
+        final long channelID;
+        if (channel.asServerThreadChannel().isPresent()) {
+            channelID = channel.asServerThreadChannel().get().getParent().getId();
+        } else {
+            channelID = channel.getId();
+        }
+
 
         final MessageBuilder response = new MessageBuilder();
         final MarkovChain markovChain = new MarkovChain(channelID);

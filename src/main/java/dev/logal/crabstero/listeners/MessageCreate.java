@@ -9,32 +9,38 @@
 package dev.logal.crabstero.listeners;
 
 import dev.logal.crabstero.utils.MarkovChainMessages;
-import org.javacord.api.entity.channel.ServerTextChannel;
+import org.javacord.api.entity.channel.TextChannel;
 import org.javacord.api.entity.message.Message;
 import org.javacord.api.entity.message.MessageAuthor;
 import org.javacord.api.entity.message.MessageType;
 import org.javacord.api.event.message.MessageCreateEvent;
 import org.javacord.api.listener.message.MessageCreateListener;
 
-import java.util.Optional;
-
 public final class MessageCreate implements MessageCreateListener {
     @Override
     public void onMessageCreate(final MessageCreateEvent event) {
-        final MessageAuthor author = event.getMessageAuthor();
-        final Optional<ServerTextChannel> serverTextChannel = event.getChannel().asServerTextChannel();
-        if (!serverTextChannel.isPresent() || author.isBotUser() || author.isWebhook() || author.isYourself()) {
-            return;
+        // Is this message being created outside of a server text channel or a server thread channel?
+        final TextChannel channel = event.getChannel();
+        if (channel.asServerTextChannel().isEmpty() && channel.asServerThreadChannel().isEmpty()) {
+            return; // Yes. Ignore it.
         }
 
+        // Is the user creating this message another bot, a webhook, or Crabstero itself?
+        final MessageAuthor author = event.getMessageAuthor();
+        if (author.isBotUser() || author.isWebhook() || author.isYourself()) {
+            return; // Yes. Ignore it.
+        }
+
+        // Is this message mentioning Crabstero?
         final Message message = event.getMessage();
         if (message.getMentionedUsers().contains(event.getApi().getYourself())) {
-            MarkovChainMessages.replyToMessage(message);
-            return;
+            MarkovChainMessages.replyToMessage(message); // Yes. Respond to it.
+            return; // Prevent further processing of the message.
         }
 
-        if (message.getType() == MessageType.NORMAL) {
-            MarkovChainMessages.ingestMessage(message);
+        // Is this message a normal message outside of a server thread channel?
+        if (message.getType() == MessageType.NORMAL && channel.asServerThreadChannel().isEmpty()) {
+            MarkovChainMessages.ingestMessage(message); // Yes. Ingest the message.
         }
     }
 }

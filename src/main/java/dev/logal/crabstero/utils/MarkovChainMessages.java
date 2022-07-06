@@ -25,22 +25,22 @@ import java.util.List;
 import java.util.Random;
 
 public class MarkovChainMessages {
-    private static final AllowedMentions allowedMentions;
-    private static final Random rng = new SecureRandom();
+    private final Crabstero crabstero;
 
-    static {
+    private final AllowedMentions allowedMentions;
+    private final Random rng = new SecureRandom();
+
+    public MarkovChainMessages(final Crabstero crabstero) {
+        this.crabstero = crabstero;
+
         final AllowedMentionsBuilder builder = new AllowedMentionsBuilder();
         builder.setMentionEveryoneAndHere(false);
         builder.setMentionRoles(false);
         builder.setMentionUsers(false);
-        allowedMentions = builder.build();
+        this.allowedMentions = builder.build();
     }
 
-    private MarkovChainMessages() {
-        throw new UnsupportedOperationException();
-    }
-
-    public static void replyToMessage(final Message message) {
+    public void replyToMessage(final Message message) {
         final TextChannel channel = message.getChannel();
         if (!channel.canYouWrite()) {
             return;
@@ -55,20 +55,20 @@ public class MarkovChainMessages {
 
 
         final MessageBuilder response = new MessageBuilder();
-        final MarkovChain markovChain = new MarkovChain(channelID);
+        final MarkovChain markovChain = new MarkovChain(channelID, this.crabstero);
 
         response.replyTo(message);
         response.setContent(markovChain.generate(750, 1000));
 
-        if (rng.nextDouble() >= 0.95 && channel.canYouEmbedLinks()) {
+        if (this.rng.nextDouble() >= 0.95 && channel.canYouEmbedLinks()) {
             final EmbedBuilder embed = new EmbedBuilder();
             embed.setTitle(markovChain.generate(200, 300));
             embed.setDescription(markovChain.generate(300, 500));
-            try (final Jedis jedis = Crabstero.getJedis()) {
+            try (final Jedis jedis = this.crabstero.getJedisPool().getResource()) {
                 final List<String> embedImageURLs = jedis.lrange(channelID + ":images", 0, -1);
 
                 if (embedImageURLs.size() > 0) {
-                    embed.setImage(embedImageURLs.get(rng.nextInt(embedImageURLs.size())));
+                    embed.setImage(embedImageURLs.get(this.rng.nextInt(embedImageURLs.size())));
                 }
             }
 
@@ -80,14 +80,14 @@ public class MarkovChainMessages {
         response.send(channel).exceptionally(ExceptionLogger.get());
     }
 
-    public static void ingestMessage(final Message message) {
+    public void ingestMessage(final Message message) {
         final MessageAuthor author = message.getAuthor();
         if (author.isBotUser() || author.isWebhook() || message.getMentionedUsers().contains(message.getApi().getYourself())) {
             return;
         }
 
         final long channelID = message.getChannel().getId();
-        final MarkovChain markovChain = new MarkovChain(channelID);
+        final MarkovChain markovChain = new MarkovChain(channelID, this.crabstero);
 
         markovChain.ingest(message.getContent());
 
@@ -96,19 +96,14 @@ public class MarkovChainMessages {
         }
     }
 
-    public static void ingestEmbed(final long channelID, final Embed embed) {
-        final MarkovChain markovChain = new MarkovChain(channelID);
+    public void ingestEmbed(final long channelID, final Embed embed) {
+        final MarkovChain markovChain = new MarkovChain(channelID, this.crabstero);
 
-        embed.getTitle().ifPresent((title) -> {
-            markovChain.ingest(title);
-        });
-
-        embed.getDescription().ifPresent((description) -> {
-            markovChain.ingest(description);
-        });
+        embed.getTitle().ifPresent(markovChain::ingest);
+        embed.getDescription().ifPresent(markovChain::ingest);
 
         embed.getImage().ifPresent((image) -> {
-            try (final Jedis jedis = Crabstero.getJedis()) {
+            try (final Jedis jedis = this.crabstero.getJedisPool().getResource()) {
                 jedis.lpush(channelID + ":images", image.getUrl().toString());
             }
         });

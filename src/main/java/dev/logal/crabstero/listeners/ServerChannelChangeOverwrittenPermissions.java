@@ -14,10 +14,16 @@ import org.javacord.api.event.channel.server.ServerChannelChangeOverwrittenPermi
 import org.javacord.api.listener.channel.server.ServerChannelChangeOverwrittenPermissionsListener;
 
 public final class ServerChannelChangeOverwrittenPermissions implements ServerChannelChangeOverwrittenPermissionsListener {
+    private final Crabstero crabstero;
+
+    public ServerChannelChangeOverwrittenPermissions(final Crabstero crabstero) {
+        this.crabstero = crabstero;
+    }
+
     @Override
     public void onServerChannelChangeOverwrittenPermissions(final ServerChannelChangeOverwrittenPermissionsEvent event) {
         event.getChannel().asServerTextChannel().ifPresent((channel) -> {
-            Crabstero.submitTask(new ChannelHistoryIngestionTask(channel));
+            this.crabstero.getWorkerPool().submit(new ChannelHistoryIngestionTask(channel, crabstero));
         });
     }
 }

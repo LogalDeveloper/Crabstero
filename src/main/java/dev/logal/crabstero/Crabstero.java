@@ -11,32 +11,25 @@ package dev.logal.crabstero;
 import dev.logal.crabstero.listeners.*;
 import org.javacord.api.DiscordApi;
 import org.javacord.api.DiscordApiBuilder;
-import org.javacord.api.Javacord;
 import org.javacord.api.entity.intent.Intent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import redis.clients.jedis.Jedis;
 import redis.clients.jedis.JedisPool;
 import redis.clients.jedis.JedisPoolConfig;
 
-import java.util.concurrent.*;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 
 public final class Crabstero {
-    public static final int maximumMessagesPerChannel = 50000;
-
     private static final Logger logger = LoggerFactory.getLogger(Crabstero.class);
 
-    private static final String token = System.getenv("TOKEN");
-    private static final JedisPool jedisPool = new JedisPool(new JedisPoolConfig(), System.getenv("REDIS_HOST"));
+    private final DiscordApi discordApi;
+    private final JedisPool jedisPool;
+    private final ScheduledExecutorService workerPool;
 
-    private static final ScheduledExecutorService workerPool = Executors.newScheduledThreadPool(4, new CrabsteroThreadFactory());
-
-    private Crabstero() {
-        throw new UnsupportedOperationException();
-    }
-
-    public static void main(final String[] arguments) {
-        logger.info(Javacord.USER_AGENT);
+    public Crabstero(final String token, final String redisHost, final int redisPort) {
+        this.jedisPool = new JedisPool(new JedisPoolConfig(), redisHost, redisPort);
+        this.workerPool = Executors.newScheduledThreadPool(4, new CrabsteroThreadFactory());
 
         final DiscordApiBuilder builder = new DiscordApiBuilder();
 
@@ -48,28 +41,37 @@ public final class Crabstero {
 
         builder.setIntents(Intent.GUILDS, Intent.GUILD_MESSAGES);
 
-        builder.addListener(new MessageCreate());
-        builder.addListener(new RoleChangePermissions());
-        builder.addListener(new ServerBecomesAvailable());
-        builder.addListener(new ServerChannelChangeOverwrittenPermissions());
-        builder.addListener(new ServerJoin());
-        builder.addListener(new UserRoleAdd());
+        builder.addListener(new MessageCreate(this));
+        builder.addListener(new RoleChangePermissions(this));
+        builder.addListener(new ServerBecomesAvailable(this));
+        builder.addListener(new ServerChannelChangeOverwrittenPermissions(this));
+        builder.addListener(new ServerJoin(this));
+        builder.addListener(new UserRoleAdd(this));
 
         builder.setRecommendedTotalShards();
 
-        final DiscordApi api = builder.login().join();
-        api.setMessageCacheSize(0, 1);
+        this.discordApi = builder.login().join();
+        this.discordApi.setMessageCacheSize(0, 1);
     }
 
-    public static Future<?> submitTask(final Runnable task) {
-        return workerPool.submit(task);
+    public static void main(final String[] arguments) {
+        final String token = System.getenv("TOKEN");
+        final String redisHost = System.getenv("REDIS_HOST");
+
+        logger.info("Starting Crabstero...");
+        new Crabstero(token, redisHost, 6379);
+        logger.info("Crabstero started!");
     }
 
-    public static ScheduledFuture<?> scheduleTask(final Runnable task, final long delay, final TimeUnit unit) {
-        return workerPool.schedule(task, delay, unit);
+    public DiscordApi getDiscordApi() {
+        return this.discordApi;
     }
 
-    public static Jedis getJedis() {
-        return jedisPool.getResource();
+    public JedisPool getJedisPool() {
+        return this.jedisPool;
+    }
+
+    public ScheduledExecutorService getWorkerPool() {
+        return this.workerPool;
     }
 }

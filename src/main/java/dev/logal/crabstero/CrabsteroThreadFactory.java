@@ -11,7 +11,7 @@ package dev.logal.crabstero;
 import java.util.concurrent.ThreadFactory;
 
 public final class CrabsteroThreadFactory implements ThreadFactory {
-    private static int threadNumber = 1;
+    private int threadNumber = 1;
 
     @Override
     public Thread newThread(final Runnable runnable) {

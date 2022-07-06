@@ -8,6 +8,7 @@
 
 package dev.logal.crabstero.listeners;
 
+import dev.logal.crabstero.Crabstero;
 import dev.logal.crabstero.utils.MarkovChainMessages;
 import org.javacord.api.entity.channel.TextChannel;
 import org.javacord.api.entity.message.Message;
@@ -17,6 +18,12 @@ import org.javacord.api.event.message.MessageCreateEvent;
 import org.javacord.api.listener.message.MessageCreateListener;
 
 public final class MessageCreate implements MessageCreateListener {
+    private final MarkovChainMessages markovChainMessages;
+
+    public MessageCreate(final Crabstero crabstero) {
+        this.markovChainMessages = new MarkovChainMessages(crabstero);
+    }
+
     @Override
     public void onMessageCreate(final MessageCreateEvent event) {
         // Is this message being created outside of a server text channel or a server thread channel?
@@ -34,13 +41,13 @@ public final class MessageCreate implements MessageCreateListener {
         // Is this message mentioning Crabstero?
         final Message message = event.getMessage();
         if (message.getMentionedUsers().contains(event.getApi().getYourself())) {
-            MarkovChainMessages.replyToMessage(message); // Yes. Respond to it.
+            this.markovChainMessages.replyToMessage(message); // Yes. Respond to it.
             return; // Prevent further processing of the message.
         }
 
         // Is this message a normal message outside of a server thread channel?
         if (message.getType() == MessageType.NORMAL && channel.asServerThreadChannel().isEmpty()) {
-            MarkovChainMessages.ingestMessage(message); // Yes. Ingest the message.
+            this.markovChainMessages.ingestMessage(message); // Yes. Ingest the message.
         }
     }
 }

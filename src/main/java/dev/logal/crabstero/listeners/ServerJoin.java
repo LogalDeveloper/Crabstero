@@ -23,6 +23,12 @@ import java.awt.*;
 public final class ServerJoin implements ServerJoinListener {
     private static final Logger logger = LoggerFactory.getLogger(ServerJoin.class);
 
+    private final Crabstero crabstero;
+
+    public ServerJoin(final Crabstero crabstero) {
+        this.crabstero = crabstero;
+    }
+
     @Override
     public void onServerJoin(final ServerJoinEvent event) {
         final Server server = event.getServer();
@@ -41,7 +47,7 @@ public final class ServerJoin implements ServerJoinListener {
         });
 
         server.getTextChannels().forEach((channel) -> {
-            Crabstero.submitTask(new ChannelHistoryIngestionTask(channel));
+            this.crabstero.getWorkerPool().submit(new ChannelHistoryIngestionTask(channel, crabstero));
         });
     }
 }

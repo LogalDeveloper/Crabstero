@@ -18,15 +18,24 @@ import java.util.Random;
 
 public final class MarkovChain {
     private static final char DEFAULT_SENTENCE_END = '§';
-    private static final Random rng = new SecureRandom();
 
     private final long id;
+    private final Crabstero crabstero;
+    private final Random rng;
 
-    public MarkovChain(final long id) {
+    public MarkovChain(final long id, final Crabstero crabstero) {
         this.id = id;
+        this.crabstero = crabstero;
+        this.rng = new SecureRandom();
     }
 
-    private static final boolean isCompleteSentence(final String sentence) {
+    public MarkovChain(final long id, final Crabstero crabstero, final Random random) {
+        this.id = id;
+        this.crabstero = crabstero;
+        this.rng = random;
+    }
+
+    private static boolean isCompleteSentence(final String sentence) {
         if (sentence.isEmpty()) {
             return false;
         }
@@ -42,8 +51,8 @@ public final class MarkovChain {
 
         final String[] sentences = paragraph.trim().replaceAll(" +", " ").replaceAll("\n", " ").split("(?<=[.!?]) ");
 
-        for (int i = 0; i < sentences.length; i++) {
-            this.ingestSentence(sentences[i]);
+        for (String sentence : sentences) {
+            this.ingestSentence(sentence);
         }
     }
 
@@ -54,7 +63,7 @@ public final class MarkovChain {
 
         String[] words = sentence.trim().replaceAll(" +", " ").split(" ");
 
-        try (final Jedis jedis = Crabstero.getJedis()) {
+        try (final Jedis jedis = this.crabstero.getJedisPool().getResource()) {
             final Pipeline pipeline = jedis.pipelined();
             for (int i = 0; i < words.length - 1; i++) {
                 if (i == 0) {
@@ -70,7 +79,7 @@ public final class MarkovChain {
     public String generate(final int softCharacterLimit, final int hardCharacterLimit) {
         final StringBuilder newSentence = new StringBuilder();
 
-        try (final Jedis jedis = Crabstero.getJedis()) {
+        try (final Jedis jedis = this.crabstero.getJedisPool().getResource()) {
             if (!jedis.exists(this.id + ":start")) {
                 this.ingestSentence("Hello world!");
             }
@@ -104,7 +113,7 @@ public final class MarkovChain {
                 }
 
                 word = wordChoices.get(index);
-                newSentence.append(" " + word);
+                newSentence.append(" ").append(word);
 
                 final int sentenceLength = newSentence.length();
                 if (sentenceLength >= hardCharacterLimit) {

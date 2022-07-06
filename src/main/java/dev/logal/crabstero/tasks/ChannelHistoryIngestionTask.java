@@ -22,13 +22,16 @@ import java.util.stream.Stream;
 
 public final class ChannelHistoryIngestionTask implements Runnable {
     private static final String INGESTED_CHANNELS_KEY = "ingestedChannels";
+    private static final int MAXIMUM_MESSAGES_PER_CHANNEL = 50000;
 
     private static final Logger logger = LoggerFactory.getLogger(ChannelHistoryIngestionTask.class);
 
+    private final Crabstero crabstero;
     private final ServerTextChannel channel;
 
-    public ChannelHistoryIngestionTask(final ServerTextChannel channel) {
+    public ChannelHistoryIngestionTask(final ServerTextChannel channel, final Crabstero crabstero) {
         this.channel = channel;
+        this.crabstero = crabstero;
     }
 
     @Override
@@ -39,7 +42,7 @@ public final class ChannelHistoryIngestionTask implements Runnable {
                 return;
             }
 
-            try (final Jedis jedis = Crabstero.getJedis()) {
+            try (final Jedis jedis = this.crabstero.getJedisPool().getResource()) {
                 if (jedis.lrange(INGESTED_CHANNELS_KEY, 0, -1).contains(this.channel.getIdAsString())) {
                     return;
                 } else {
@@ -49,13 +52,14 @@ public final class ChannelHistoryIngestionTask implements Runnable {
                 }
             }
 
+            final MarkovChainMessages markovChainMessages = new MarkovChainMessages(this.crabstero);
             try (final Stream<Message> history = this.channel.getMessagesAsStream()) {
                 final Iterator<Message> iterator = history.iterator();
                 int i = 0;
                 while (iterator.hasNext()) {
                     i++;
-                    MarkovChainMessages.ingestMessage(iterator.next());
-                    if (i == Crabstero.maximumMessagesPerChannel) {
+                    markovChainMessages.ingestMessage(iterator.next());
+                    if (i == MAXIMUM_MESSAGES_PER_CHANNEL) {
                         break;
                     }
                 }

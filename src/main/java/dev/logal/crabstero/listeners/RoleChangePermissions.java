@@ -14,11 +14,17 @@ import org.javacord.api.event.server.role.RoleChangePermissionsEvent;
 import org.javacord.api.listener.server.role.RoleChangePermissionsListener;
 
 public final class RoleChangePermissions implements RoleChangePermissionsListener {
+    private final Crabstero crabstero;
+
+    public RoleChangePermissions(final Crabstero crabstero) {
+        this.crabstero = crabstero;
+    }
+
     @Override
     public void onRoleChangePermissions(final RoleChangePermissionsEvent event) {
         if (event.getRole().hasUser(event.getApi().getYourself())) {
             event.getServer().getTextChannels().forEach((channel) -> {
-                Crabstero.submitTask(new ChannelHistoryIngestionTask(channel));
+                this.crabstero.getWorkerPool().submit(new ChannelHistoryIngestionTask(channel, crabstero));
             });
         }
     }

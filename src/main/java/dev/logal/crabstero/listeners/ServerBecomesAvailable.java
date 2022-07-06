@@ -14,10 +14,16 @@ import org.javacord.api.event.server.ServerBecomesAvailableEvent;
 import org.javacord.api.listener.server.ServerBecomesAvailableListener;
 
 public final class ServerBecomesAvailable implements ServerBecomesAvailableListener {
+    private final Crabstero crabstero;
+
+    public ServerBecomesAvailable(final Crabstero crabstero) {
+        this.crabstero = crabstero;
+    }
+
     @Override
     public void onServerBecomesAvailable(final ServerBecomesAvailableEvent event) {
         event.getServer().getTextChannels().forEach((channel) -> {
-            Crabstero.submitTask(new ChannelHistoryIngestionTask(channel));
+            this.crabstero.getWorkerPool().submit(new ChannelHistoryIngestionTask(channel, crabstero));
         });
     }
 }

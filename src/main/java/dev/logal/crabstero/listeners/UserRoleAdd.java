@@ -14,11 +14,17 @@ import org.javacord.api.event.server.role.UserRoleAddEvent;
 import org.javacord.api.listener.server.role.UserRoleAddListener;
 
 public final class UserRoleAdd implements UserRoleAddListener {
+    private final Crabstero crabstero;
+
+    public UserRoleAdd(final Crabstero crabstero) {
+        this.crabstero = crabstero;
+    }
+
     @Override
     public void onUserRoleAdd(final UserRoleAddEvent event) {
         if (event.getUser().isYourself()) {
             event.getServer().getTextChannels().forEach((channel) -> {
-                Crabstero.submitTask(new ChannelHistoryIngestionTask(channel));
+                this.crabstero.getWorkerPool().submit(new ChannelHistoryIngestionTask(channel, crabstero));
             });
         }
     }

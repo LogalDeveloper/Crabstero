@@ -18,34 +18,50 @@ import org.javacord.api.util.logging.ExceptionLogger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.awt.*;
+import java.awt.Color;
 
+/**
+ * Handles joining new servers.
+ */
 public final class ServerJoin implements ServerJoinListener {
     private static final Logger logger = LoggerFactory.getLogger(ServerJoin.class);
 
     private final Crabstero crabstero;
 
+    /**
+     * Creates a new server join handler owned by a given instance of Crabstero.
+     *
+     * @param crabstero The instance of Crabstero.
+     */
     public ServerJoin(final Crabstero crabstero) {
         this.crabstero = crabstero;
     }
 
+    /**
+     * Queues all text channels for message history ingestion when joining a new server.
+     *
+     * @param event The event.
+     */
     @Override
     public void onServerJoin(final ServerJoinEvent event) {
+        // Log the server join.
         final Server server = event.getServer();
         logger.info("Joined new server! (Name: \"" + server.getName() + "\" | ID: " + server.getIdAsString() + ")");
 
+        // Start building an embed with basic server information.
         final EmbedBuilder embed = new EmbedBuilder();
         embed.setTitle("Joined New Server");
         embed.setColor(new Color(255, 165, 0));
         embed.addField(server.getName() + " (" + server.getIdAsString() + ")", server.getMemberCount() + " members");
-        server.getIcon().ifPresent((icon) -> {
-            embed.setImage(icon.getUrl().toString());
-        });
-        embed.setFooter(event.getApi().getServers().size() + " total servers");
-        event.getApi().getOwner().thenAcceptAsync((owner) -> {
-            owner.sendMessage(embed).exceptionally(ExceptionLogger.get());
-        });
+        server.getIcon().ifPresent((icon) -> embed.setImage(icon.getUrl().toString()));
 
+        // Add the current total server count.
+        embed.setFooter(event.getApi().getServers().size() + " total servers");
+
+        // Send this embed to the bot owner.
+        event.getApi().getOwner().thenAcceptAsync((owner) -> owner.sendMessage(embed).exceptionally(ExceptionLogger.get()));
+
+        // Queue all text channels for message history ingestion.
         server.getTextChannels().forEach((channel) -> {
             this.crabstero.getWorkerPool().submit(new ChannelHistoryIngestionTask(channel, crabstero));
         });

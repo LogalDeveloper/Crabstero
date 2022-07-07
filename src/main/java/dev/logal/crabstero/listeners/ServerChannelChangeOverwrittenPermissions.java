@@ -13,15 +13,29 @@ import dev.logal.crabstero.tasks.ChannelHistoryIngestionTask;
 import org.javacord.api.event.channel.server.ServerChannelChangeOverwrittenPermissionsEvent;
 import org.javacord.api.listener.channel.server.ServerChannelChangeOverwrittenPermissionsListener;
 
+/**
+ * Handles channels with changing overwritten permissions.
+ */
 public final class ServerChannelChangeOverwrittenPermissions implements ServerChannelChangeOverwrittenPermissionsListener {
     private final Crabstero crabstero;
 
+    /**
+     * Creates a new server channel changing overwritten permissions handler owned by a given instance of Crabstero.
+     *
+     * @param crabstero The instance of Crabstero.
+     */
     public ServerChannelChangeOverwrittenPermissions(final Crabstero crabstero) {
         this.crabstero = crabstero;
     }
 
+    /**
+     * Queues all text channels for message history ingestion when channel override permissions change.
+     *
+     * @param event The event.
+     */
     @Override
     public void onServerChannelChangeOverwrittenPermissions(final ServerChannelChangeOverwrittenPermissionsEvent event) {
+        // Queue every text channel for message history ingestion.
         event.getChannel().asServerTextChannel().ifPresent((channel) -> {
             this.crabstero.getWorkerPool().submit(new ChannelHistoryIngestionTask(channel, crabstero));
         });

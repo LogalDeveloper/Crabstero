@@ -13,16 +13,31 @@ import dev.logal.crabstero.tasks.ChannelHistoryIngestionTask;
 import org.javacord.api.event.server.role.RoleChangePermissionsEvent;
 import org.javacord.api.listener.server.role.RoleChangePermissionsListener;
 
+/**
+ * Handles roles with changing permissions.
+ */
 public final class RoleChangePermissions implements RoleChangePermissionsListener {
     private final Crabstero crabstero;
 
+    /**
+     * Creates a new role change permission handler owned by a given instance of Crabstero.
+     *
+     * @param crabstero The instance of Crabstero.
+     */
     public RoleChangePermissions(final Crabstero crabstero) {
         this.crabstero = crabstero;
     }
 
+    /**
+     * Queues all text channels for message history ingestion when role permissions change.
+     *
+     * @param event The event.
+     */
     @Override
     public void onRoleChangePermissions(final RoleChangePermissionsEvent event) {
+        // Does the updated role include Crabstero as a member?
         if (event.getRole().hasUser(event.getApi().getYourself())) {
+            // Queue every text channel for message history ingestion.
             event.getServer().getTextChannels().forEach((channel) -> {
                 this.crabstero.getWorkerPool().submit(new ChannelHistoryIngestionTask(channel, crabstero));
             });

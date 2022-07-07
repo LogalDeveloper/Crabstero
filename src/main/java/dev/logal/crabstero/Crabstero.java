@@ -20,6 +20,9 @@ import redis.clients.jedis.JedisPoolConfig;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 
+/**
+ * The simple nonversation Discord bot.
+ */
 public final class Crabstero {
     private static final Logger logger = LoggerFactory.getLogger(Crabstero.class);
 
@@ -27,6 +30,13 @@ public final class Crabstero {
     private final JedisPool jedisPool;
     private final ScheduledExecutorService workerPool;
 
+    /**
+     * Creates a new instance of Crabstero using a given Discord bot token to connect to Discord and a given Redis host and port to connect to a Redis database.
+     *
+     * @param token The Discord bot token.
+     * @param redisHost The host of the Redis server.
+     * @param redisPort The port of the Redis server.
+     */
     public Crabstero(final String token, final String redisHost, final int redisPort) {
         this.jedisPool = new JedisPool(new JedisPoolConfig(), redisHost, redisPort);
         this.workerPool = Executors.newScheduledThreadPool(4, new CrabsteroThreadFactory());
@@ -54,23 +64,43 @@ public final class Crabstero {
         this.discordApi.setMessageCacheSize(0, 1);
     }
 
+    /**
+     * Entrypoint to the standalone executable build of Crabstero. This simply starts an instance of Crabstero
+     *
+     * @param arguments Command line arguments. Not used.
+     */
     public static void main(final String[] arguments) {
         final String token = System.getenv("TOKEN");
         final String redisHost = System.getenv("REDIS_HOST");
 
         logger.info("Starting Crabstero...");
-        new Crabstero(token, redisHost, 6379);
+        new Crabstero(token, redisHost, 6379); // TODO: Don't use a hardcoded port number.
         logger.info("Crabstero started!");
     }
 
+    /**
+     * Gets the Discord API used by this instance of Crabstero.
+     *
+     * @return The Discord API.
+     */
     public DiscordApi getDiscordApi() {
         return this.discordApi;
     }
 
+    /**
+     * Gets the Jedis pool used by this instance of Crabstero.
+     *
+     * @return The Jedis pool.
+     */
     public JedisPool getJedisPool() {
         return this.jedisPool;
     }
 
+    /**
+     * Gets the worker pool used by this instance of Crabstero.
+     *
+     * @return The scheduled executor service.
+     */
     public ScheduledExecutorService getWorkerPool() {
         return this.workerPool;
     }

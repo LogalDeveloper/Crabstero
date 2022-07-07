@@ -17,37 +17,56 @@ import org.javacord.api.entity.message.MessageType;
 import org.javacord.api.event.message.MessageCreateEvent;
 import org.javacord.api.listener.message.MessageCreateListener;
 
+/**
+ * Handles created messages.
+ */
 public final class MessageCreate implements MessageCreateListener {
     private final MarkovChainMessages markovChainMessages;
 
+    /**
+     * Creates a new message creation handler owned by a given instance of Crabstero.
+     *
+     * @param crabstero The instance of Crabstero.
+     */
     public MessageCreate(final Crabstero crabstero) {
         this.markovChainMessages = new MarkovChainMessages(crabstero);
     }
 
+    /**
+     * Responds to mentions and ingests normal text messages.
+     *
+     * @param event The event.
+     */
     @Override
     public void onMessageCreate(final MessageCreateEvent event) {
         // Is this message being created outside of a server text channel or a server thread channel?
         final TextChannel channel = event.getChannel();
         if (channel.asServerTextChannel().isEmpty() && channel.asServerThreadChannel().isEmpty()) {
-            return; // Yes. Ignore it.
+            // Yes. Ignore it.
+            return;
         }
 
         // Is the user creating this message another bot, a webhook, or Crabstero itself?
         final MessageAuthor author = event.getMessageAuthor();
         if (author.isBotUser() || author.isWebhook() || author.isYourself()) {
-            return; // Yes. Ignore it.
+            // Yes. Ignore it.
+            return;
         }
 
         // Is this message mentioning Crabstero?
         final Message message = event.getMessage();
         if (message.getMentionedUsers().contains(event.getApi().getYourself())) {
-            this.markovChainMessages.replyToMessage(message); // Yes. Respond to it.
-            return; // Prevent further processing of the message.
+            // Yes. Respond to it.
+            this.markovChainMessages.replyToMessage(message);
+
+            // Prevent further processing of the message.
+            return;
         }
 
         // Is this message a normal message outside of a server thread channel?
         if (message.getType() == MessageType.NORMAL && channel.asServerThreadChannel().isEmpty()) {
-            this.markovChainMessages.ingestMessage(message); // Yes. Ingest the message.
+            // Yes. Ingest the message.
+            this.markovChainMessages.ingestMessage(message);
         }
     }
 }

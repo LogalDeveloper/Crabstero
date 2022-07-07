@@ -10,9 +10,18 @@ package dev.logal.crabstero;
 
 import java.util.concurrent.ThreadFactory;
 
+/**
+ * Creates threads with custom branded names for visibility in tools such as htop.
+ */
 public final class CrabsteroThreadFactory implements ThreadFactory {
     private int threadNumber = 1;
 
+    /**
+     * Creates a new thread with an automatically set name.
+     *
+     * @param runnable The runnable to create the thread with.
+     * @return A new thread with the name automatically set.
+     */
     @Override
     public Thread newThread(final Runnable runnable) {
         final Thread thread = new Thread(runnable);

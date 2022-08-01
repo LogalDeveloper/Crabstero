@@ -1,9 +1,9 @@
-FROM gradle:7.0.0-jdk11 AS build
+FROM gradle:7.5.0-jdk17-alpine AS build
 COPY . /home/gradle/Crabstero
 WORKDIR /home/gradle/Crabstero
 RUN gradle build --no-daemon
 
-FROM adoptopenjdk/openjdk11-openj9:jre AS run
+FROM eclipse-temurin:17.0.4_8-jre-alpine AS run
 COPY --from=build /home/gradle/Crabstero/build/distributions/Crabstero.tar /
 RUN tar -xvf Crabstero.tar && rm /Crabstero.tar /Crabstero/bin/Crabstero.bat
 ENTRYPOINT ["/Crabstero/bin/Crabstero"]

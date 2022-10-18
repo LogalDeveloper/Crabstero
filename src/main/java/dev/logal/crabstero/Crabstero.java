@@ -49,7 +49,7 @@ public final class Crabstero {
         builder.setWaitForServersOnStartup(false);
         builder.setWaitForUsersOnStartup(false);
 
-        builder.setIntents(Intent.GUILDS, Intent.GUILD_MESSAGES);
+        builder.setIntents(Intent.GUILDS, Intent.GUILD_MESSAGES, Intent.MESSAGE_CONTENT);
 
         builder.addListener(new MessageCreate(this));
         builder.addListener(new RoleChangePermissions(this));

@@ -8,8 +8,8 @@ repositories {
 }
 
 dependencies {
-    implementation 'org.javacord:javacord:3.5.0'
-    implementation 'redis.clients:jedis:3.9.0'
+    implementation 'org.javacord:javacord:3.6.0'
+    implementation 'redis.clients:jedis:4.3.0'
 
     implementation 'org.slf4j:slf4j-simple:1.7.36'
 }

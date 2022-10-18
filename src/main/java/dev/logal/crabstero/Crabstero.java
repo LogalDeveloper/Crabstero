@@ -33,7 +33,7 @@ public final class Crabstero {
     /**
      * Creates a new instance of Crabstero using a given Discord bot token to connect to Discord and a given Redis host and port to connect to a Redis database.
      *
-     * @param token The Discord bot token.
+     * @param token     The Discord bot token.
      * @param redisHost The host of the Redis server.
      * @param redisPort The port of the Redis server.
      */

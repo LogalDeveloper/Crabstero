@@ -59,7 +59,7 @@ public final class ServerJoin implements ServerJoinListener {
         embed.setFooter(event.getApi().getServers().size() + " total servers");
 
         // Send this embed to the bot owner.
-        event.getApi().getOwner().thenAcceptAsync((owner) -> owner.sendMessage(embed).exceptionally(ExceptionLogger.get()));
+        event.getApi().getOwner().ifPresent((owner) -> owner.thenAcceptAsync((user) -> user.sendMessage(embed).exceptionally(ExceptionLogger.get())));
 
         // Queue all text channels for message history ingestion.
         server.getTextChannels().forEach((channel) -> {

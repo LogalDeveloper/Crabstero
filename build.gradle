@@ -8,10 +8,10 @@ repositories {
 }
 
 dependencies {
-    implementation 'org.javacord:javacord:3.6.0'
-    implementation 'redis.clients:jedis:4.3.0'
+    implementation 'org.javacord:javacord:3.7.0'
+    implementation 'redis.clients:jedis:4.3.1'
 
-    implementation 'org.slf4j:slf4j-simple:1.7.36'
+    implementation 'org.slf4j:slf4j-simple:2.0.6'
 }
 
 compileJava.options.encoding = 'UTF-8'

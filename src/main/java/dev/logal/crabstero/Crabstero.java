@@ -72,9 +72,10 @@ public final class Crabstero {
     public static void main(final String[] arguments) {
         final String token = System.getenv("TOKEN");
         final String redisHost = System.getenv("REDIS_HOST");
+        final int redisPort = Integer.parseInt(System.getenv("REDIS_PORT"));
 
         logger.info("Starting Crabstero...");
-        new Crabstero(token, redisHost, 6379); // TODO: Don't use a hardcoded port number.
+        new Crabstero(token, redisHost, redisPort);
         logger.info("Crabstero started!");
     }
 

@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Logan Fick
+ * Copyright 2023 Logan Fick
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at: https://www.apache.org/licenses/LICENSE-2.0
  *
@@ -9,8 +9,6 @@
 package dev.logal.crabstero.utils;
 
 import dev.logal.crabstero.Crabstero;
-import redis.clients.jedis.Jedis;
-import redis.clients.jedis.Pipeline;
 
 import java.security.SecureRandom;
 import java.util.List;
@@ -20,10 +18,11 @@ import java.util.Random;
  * Ingests sentences and generates new ones using a Markov chain with a Redis storage.
  */
 public final class MarkovChain {
+    private static final String STARTING_WORDS_KEY = "startingWords";
     private static final char DEFAULT_SENTENCE_END = '§'; // Default character to end sentences with if it does not include a period, exclamation mark, or question mark.
 
     private final long id; // A unique number for this Markov chain to segment it away from other Markov chains. This is usually the channel ID given by Discord.
-    private final Crabstero crabstero; // The Crabstero instance using this Markov chain.
+    private final RedisDatabase redisDatabase; // The redis database for the Markov chain to store and retrieve data from.
     private final Random rng; // A source of randomness.
 
     /**
@@ -34,7 +33,7 @@ public final class MarkovChain {
      */
     public MarkovChain(final long id, final Crabstero crabstero) {
         this.id = id;
-        this.crabstero = crabstero;
+        this.redisDatabase = crabstero.getRedisDatabase();
         this.rng = new SecureRandom(); // Probably placebo effect, but SecureRandom seems to produce better results.
     }
 
@@ -47,7 +46,7 @@ public final class MarkovChain {
      */
     public MarkovChain(final long id, final Crabstero crabstero, final Random random) {
         this.id = id;
-        this.crabstero = crabstero;
+        this.redisDatabase = crabstero.getRedisDatabase();
         this.rng = random;
     }
 
@@ -112,22 +111,16 @@ public final class MarkovChain {
         // Finally, split the sentence into a string array with each element being a word.
         String[] words = sentence.trim().replaceAll(" +", " ").split(" ");
 
-        // Get a reference to Jedis from the pool.
-        try (final Jedis jedis = this.crabstero.getJedisPool().getResource()) {
-            // Use a pipeline to avoid blocking caused by waiting for responses from the Redis server.
-            final Pipeline pipeline = jedis.pipelined();
-
-            // Iterate over the array of words, starting from the first element until the second to last element.
-            for (int i = 0; i < words.length - 1; i++) {
-                // Is this the first word?
-                if (i == 0) {
-                    // Yes. Push the word into a special list containing starting words.
-                    pipeline.lpush(this.id + ":start", words[i]);
-                }
-
-                // Push the word after this one into a list identified by this word.
-                pipeline.lpush(this.id + "::" + words[i], words[i + 1]);
+        // Iterate over the array of words, starting from the first element until the second to last element.
+        for (int i = 0; i < words.length - 1; i++) {
+            // Is this the first word?
+            if (i == 0) {
+                // Yes. Push the word into a special list containing starting words.
+                this.redisDatabase.lpush(RedisDatabase.MAIN_DATABASE_ID, this.id, STARTING_WORDS_KEY, words[i]);
             }
+
+            // Push the word after this one into a list identified by this word.
+            this.redisDatabase.lpush(RedisDatabase.WORDS_DATABASE_ID, this.id, words[i], words[i + 1]);
         }
     }
 
@@ -142,80 +135,76 @@ public final class MarkovChain {
         // Declare a new builder for building the new sentence.
         final StringBuilder newSentence = new StringBuilder();
 
-        // Get a reference to Jedis from the pool.
-        try (final Jedis jedis = this.crabstero.getJedisPool().getResource()) {
-            // Does this Markov chain have any starting words?
-            if (!jedis.exists(this.id + ":start")) {
-                // No. Quickly ingest something to avoid throwing an error.
-                // TODO: Could this soft lock since a reference to the jedis pool is already held?
-                this.ingestSentence("Hello world!");
-            }
+        // Does this Markov chain have any starting words?
+        if (!this.redisDatabase.exists(RedisDatabase.MAIN_DATABASE_ID, this.id, STARTING_WORDS_KEY)) {
+            // No. Quickly ingest something to avoid throwing an error.
+            this.ingestSentence("Hello world!");
+        }
 
-            // Declare a variable for holding the word about to be added to the new sentence.
-            String word;
+        // Declare a variable for holding the word about to be added to the new sentence.
+        String word;
 
-            // Get a list of all starting words.
-            final List<String> startingWords = jedis.lrange(this.id + ":start", 0, -1);
+        // Get a list of all starting words.
+        final List<String> startingWords = this.redisDatabase.lrange(RedisDatabase.MAIN_DATABASE_ID, this.id, STARTING_WORDS_KEY, 0, 499); // TODO: What's a good stop value? 0 seems like a potential DoS vector.
 
-            // Pick a random index for a starting word.
-            int index = rng.nextInt(startingWords.size());
+        // Pick a random index for a starting word.
+        int index = rng.nextInt(startingWords.size());
 
-            // Get the word.
-            word = startingWords.get(index);
+        // Get the word.
+        word = startingWords.get(index);
 
-            // Add it to the output sentence.
-            newSentence.append(word);
+        // Add it to the output sentence.
+        newSentence.append(word);
 
-            // While the selected word is in complete...
-            // Although quite rare, this loop will skip if the starting word is already complete on its own (e.g. "Yes.")
-            while (!isCompleteSentence(word)) {
-                // Get the list of words which can be added after the previous word.
-                final List<String> wordChoices = jedis.lrange(this.id + "::" + word, 0, -1);
+        // While the selected word is in complete...
+        // Although quite rare, this loop will skip if the starting word is already complete on its own (e.g. "Yes.")
+        while (!isCompleteSentence(word)) {
+            // Get the list of words which can be added after the previous word.
+            final List<String> wordChoices = this.redisDatabase.lrange(RedisDatabase.WORDS_DATABASE_ID, this.id, word, 0, 499); // TODO: What's a good stop value? 0 seems like a potential DoS vector.
 
-                // Reset the index.
-                index = -1;
+            // Reset the index.
+            index = -1;
 
-                // Is the new sentence length above the soft character limit?
-                if (newSentence.length() >= softCharacterLimit) {
-                    // Yes. Time to aggressively search for words which can complete this sentence.
+            // Is the new sentence length above the soft character limit?
+            if (newSentence.length() >= softCharacterLimit) {
+                // Yes. Time to aggressively search for words which can complete this sentence.
 
-                    // Iterate over the word choices.
-                    for (int i = 0; i < wordChoices.size(); i++) {
-                        // Get current candidate word.
-                        final String candidate = wordChoices.get(i);
+                // Iterate over the word choices.
+                for (int i = 0; i < wordChoices.size(); i++) {
+                    // Get current candidate word.
+                    final String candidate = wordChoices.get(i);
 
-                        // Does this word conclude the sentence?
-                        if (isCompleteSentence(candidate)) {
-                            // Select the index for this word and stop evaluating choices.
-                            index = i;
-                            break;
-                        }
+                    // Does this word conclude the sentence?
+                    if (isCompleteSentence(candidate)) {
+                        // Select the index for this word and stop evaluating choices.
+                        index = i;
+                        break;
                     }
+                }
 
-                    // Was no word to conclude the new sentence found?
-                    if (index == -1) {
-                        // Yes. Pick a random word and hope the next word can conclude it.
-                        index = rng.nextInt(wordChoices.size());
-                    }
-                } else {
-                    // No, there is still room. Pick a random index.
+                // Was no word to conclude the new sentence found?
+                if (index == -1) {
+                    // Yes. Pick a random word and hope the next word can conclude it.
                     index = rng.nextInt(wordChoices.size());
                 }
+            } else {
+                // No, there is still room. Pick a random index.
+                index = rng.nextInt(wordChoices.size());
+            }
 
-                // Get the selected word.
-                word = wordChoices.get(index);
+            // Get the selected word.
+            word = wordChoices.get(index);
 
-                // Append a space and this word to the new sentence.
-                newSentence.append(" ").append(word);
+            // Append a space and this word to the new sentence.
+            newSentence.append(" ").append(word);
 
-                // Is the new sentence now longer than the hard character limit?
-                final int sentenceLength = newSentence.length();
-                if (sentenceLength >= hardCharacterLimit) {
-                    // Yes. Chop off the characters beyond the hard limit.
-                    newSentence.delete(hardCharacterLimit, sentenceLength);
-                    // Break out of the loop to forcefully declare the new sentence complete.
-                    break;
-                }
+            // Is the new sentence now longer than the hard character limit?
+            final int sentenceLength = newSentence.length();
+            if (sentenceLength >= hardCharacterLimit) {
+                // Yes. Chop off the characters beyond the hard limit.
+                newSentence.delete(hardCharacterLimit, sentenceLength);
+                // Break out of the loop to forcefully declare the new sentence complete.
+                break;
             }
         }
 

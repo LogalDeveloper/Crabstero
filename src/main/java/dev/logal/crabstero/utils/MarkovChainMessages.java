@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Logan Fick
+ * Copyright 2023 Logan Fick
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at: https://www.apache.org/licenses/LICENSE-2.0
  *
@@ -18,7 +18,6 @@ import org.javacord.api.entity.message.embed.EmbedBuilder;
 import org.javacord.api.entity.message.mention.AllowedMentions;
 import org.javacord.api.entity.message.mention.AllowedMentionsBuilder;
 import org.javacord.api.util.logging.ExceptionLogger;
-import redis.clients.jedis.Jedis;
 
 import java.security.SecureRandom;
 import java.util.List;
@@ -28,6 +27,8 @@ import java.util.Random;
  * Assists with generating Discord messages in response to other users and ingesting raw messages.
  */
 public class MarkovChainMessages {
+    private static final String IMAGE_URLS_KEY = "imageURLS";
+
     private final Crabstero crabstero;
     private final AllowedMentions allowedMentions;
     private final Random rng = new SecureRandom();
@@ -85,12 +86,10 @@ public class MarkovChainMessages {
             embed.setDescription(markovChain.generate(300, 500));
 
             // If image URLs are known for this channel, chose a random one and attach to the embed.
-            try (final Jedis jedis = this.crabstero.getJedisPool().getResource()) {
-                final List<String> embedImageURLs = jedis.lrange(channelID + ":images", 0, -1);
+            final List<String> embedImageURLs = this.crabstero.getRedisDatabase().lrange(RedisDatabase.MAIN_DATABASE_ID, channelID, IMAGE_URLS_KEY, 0, 499);  // TODO: What's a good stop value? 0 seems like a potential DoS vector.
 
-                if (embedImageURLs.size() > 0) {
-                    embed.setImage(embedImageURLs.get(this.rng.nextInt(embedImageURLs.size())));
-                }
+            if (embedImageURLs.size() > 0) {
+                embed.setImage(embedImageURLs.get(this.rng.nextInt(embedImageURLs.size())));
             }
 
             // Add a watermark to the footer of the embed.
@@ -149,9 +148,7 @@ public class MarkovChainMessages {
 
         // If the embed has an image, store the URL to the image.
         embed.getImage().ifPresent((image) -> {
-            try (final Jedis jedis = this.crabstero.getJedisPool().getResource()) {
-                jedis.lpush(channelID + ":images", image.getUrl().toString());
-            }
+            this.crabstero.getRedisDatabase().lpush(RedisDatabase.MAIN_DATABASE_ID, channelID, IMAGE_URLS_KEY, image.getUrl().toString());
         });
     }
 }

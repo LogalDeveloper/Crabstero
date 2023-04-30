@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Logan Fick
+ * Copyright 2023 Logan Fick
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at: https://www.apache.org/licenses/LICENSE-2.0
  *
@@ -10,11 +10,11 @@ package dev.logal.crabstero.tasks;
 
 import dev.logal.crabstero.Crabstero;
 import dev.logal.crabstero.utils.MarkovChainMessages;
+import dev.logal.crabstero.utils.RedisDatabase;
 import org.javacord.api.entity.channel.ServerTextChannel;
 import org.javacord.api.entity.message.Message;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import redis.clients.jedis.Jedis;
 
 import java.util.Iterator;
 import java.util.stream.Stream;
@@ -55,18 +55,17 @@ public final class ChannelHistoryIngestionTask implements Runnable {
                 return;
             }
 
-            try (final Jedis jedis = this.crabstero.getJedisPool().getResource()) {
-                // Have we already ingested this channel before?
-                if (jedis.lrange(INGESTED_CHANNELS_KEY, 0, -1).contains(this.channel.getIdAsString())) {
-                    // Yes. Stop further processing of this channel.
-                    return;
-                } else {
-                    // No. Add this channel's ID to the list of ingested channels.
-                    jedis.lpush(INGESTED_CHANNELS_KEY, this.channel.getIdAsString());
 
-                    // Log the start of the ingestion of this channel.
-                    logger.info("Starting ingestion of text channel history. (Name: \"" + this.channel.getName() + "\" | ID: " + this.channel.getIdAsString() + " | Server ID: " + this.channel.getServer().getIdAsString() + ")");
-                }
+            // Have we already ingested this channel before?
+            if (this.crabstero.getRedisDatabase().lrange(RedisDatabase.MAIN_DATABASE_ID, 0, INGESTED_CHANNELS_KEY, 0, -1).contains(this.channel.getIdAsString())) {
+                // Yes. Stop further processing of this channel.
+                return;
+            } else {
+                // No. Add this channel's ID to the list of ingested channels.
+                this.crabstero.getRedisDatabase().lpush(RedisDatabase.MAIN_DATABASE_ID, 0, INGESTED_CHANNELS_KEY, this.channel.getIdAsString());
+
+                // Log the start of the ingestion of this channel.
+                logger.info("Starting ingestion of text channel history. (Name: \"" + this.channel.getName() + "\" | ID: " + this.channel.getIdAsString() + " | Server ID: " + this.channel.getServer().getIdAsString() + ")");
             }
 
             final MarkovChainMessages markovChainMessages = new MarkovChainMessages(this.crabstero);

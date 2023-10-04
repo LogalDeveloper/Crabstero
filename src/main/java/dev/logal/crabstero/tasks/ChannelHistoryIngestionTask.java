@@ -11,6 +11,7 @@ package dev.logal.crabstero.tasks;
 import dev.logal.crabstero.Crabstero;
 import dev.logal.crabstero.utils.MarkovChainMessages;
 import org.javacord.api.entity.channel.ServerTextChannel;
+import org.javacord.api.entity.channel.TextableRegularServerChannel;
 import org.javacord.api.entity.message.Message;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -29,15 +30,15 @@ public final class ChannelHistoryIngestionTask implements Runnable {
     private static final Logger logger = LoggerFactory.getLogger(ChannelHistoryIngestionTask.class);
 
     private final Crabstero crabstero;
-    private final ServerTextChannel channel;
+    private final TextableRegularServerChannel channel;
 
     /**
-     * Creates a new task for ingesting the message history of a channel.
+     * Creates a new task for ingesting the message history of a textable channel.
      *
      * @param channel   The channel to ingest.
      * @param crabstero The Crabstero instance running this task.
      */
-    public ChannelHistoryIngestionTask(final ServerTextChannel channel, final Crabstero crabstero) {
+    public ChannelHistoryIngestionTask(final TextableRegularServerChannel channel, final Crabstero crabstero) {
         this.channel = channel;
         this.crabstero = crabstero;
     }
@@ -51,7 +52,7 @@ public final class ChannelHistoryIngestionTask implements Runnable {
             // Do permissions allow Crabstero to read message history in this channel?
             if (!this.channel.canYouReadMessageHistory()) {
                 // No. Log the problem and stop further processing this channel.
-                logger.warn("Unable to ingest text channel history due to lacking permissions. Ignoring. (Name: \"" + this.channel.getName() + "\" | ID: " + this.channel.getIdAsString() + " | Server ID: " + this.channel.getServer().getIdAsString() + ")");
+                logger.warn("[" + this.channel.getIdAsString() + "] Unable to ingest textable channel history due to lacking permissions. Ignoring.");
                 return;
             }
 
@@ -65,7 +66,7 @@ public final class ChannelHistoryIngestionTask implements Runnable {
                     jedis.lpush(INGESTED_CHANNELS_KEY, this.channel.getIdAsString());
 
                     // Log the start of the ingestion of this channel.
-                    logger.info("Starting ingestion of text channel history. (Name: \"" + this.channel.getName() + "\" | ID: " + this.channel.getIdAsString() + " | Server ID: " + this.channel.getServer().getIdAsString() + ")");
+                    logger.info("[" + this.channel.getIdAsString() + "] Starting ingestion of textable channel history.");
                 }
             }
 
@@ -89,11 +90,11 @@ public final class ChannelHistoryIngestionTask implements Runnable {
                 }
 
                 // Log the results of the ingestion.
-                logger.info("Ingestion of text channel history complete. " + i + " messages ingested. (Name: \"" + this.channel.getName() + "\" | ID: " + this.channel.getIdAsString() + " | Server ID: " + this.channel.getServer().getIdAsString() + ")");
+                logger.info("[" + this.channel.getIdAsString() + "] Ingestion of textable channel history complete. " + i + " messages ingested.");
             }
         } catch (final Throwable exception) {
             // A problem occurred somewhere in this task. Log the problem.
-            logger.error("An error occurred while ingesting text channel history! (Name: \"" + this.channel.getName() + "\" | ID: " + this.channel.getIdAsString() + " | Server ID: " + this.channel.getServer().getIdAsString() + ")", exception);
+            logger.error("[" + this.channel.getIdAsString() + "] An error occurred while ingesting textable channel history!", exception);
         }
     }
 }

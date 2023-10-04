@@ -10,6 +10,7 @@ package dev.logal.crabstero.listeners;
 
 import dev.logal.crabstero.Crabstero;
 import dev.logal.crabstero.tasks.ChannelHistoryIngestionTask;
+import org.javacord.api.entity.channel.TextableRegularServerChannel;
 import org.javacord.api.event.server.role.UserRoleAddEvent;
 import org.javacord.api.listener.server.role.UserRoleAddListener;
 
@@ -37,9 +38,11 @@ public final class UserRoleAdd implements UserRoleAddListener {
     public void onUserRoleAdd(final UserRoleAddEvent event) {
         // Is the user who was assigned the role Crabstero?
         if (event.getUser().isYourself()) {
-            // Queue all text channels for message history ingestion.
-            event.getServer().getTextChannels().forEach((channel) -> {
-                this.crabstero.getWorkerPool().submit(new ChannelHistoryIngestionTask(channel, crabstero));
+            // Queue every textable channel for message history ingestion.
+            event.getServer().getRegularChannels().forEach((channel) -> {
+                if (channel instanceof final TextableRegularServerChannel textableChannel){
+                    this.crabstero.getWorkerPool().submit(new ChannelHistoryIngestionTask(textableChannel, crabstero));
+                }
             });
         }
     }

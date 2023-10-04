@@ -39,9 +39,9 @@ public final class MessageCreate implements MessageCreateListener {
      */
     @Override
     public void onMessageCreate(final MessageCreateEvent event) {
-        // Is this message being created outside of a server text channel or a server thread channel?
+        // Is this message being created outside of a server text channel, a server thread channel, or a server voice channel?
         final TextChannel channel = event.getChannel();
-        if (channel.asServerTextChannel().isEmpty() && channel.asServerThreadChannel().isEmpty()) {
+        if (channel.asServerTextChannel().isEmpty() && channel.asServerThreadChannel().isEmpty() && channel.asServerVoiceChannel().isEmpty()) {
             // Yes. Ignore it.
             return;
         }

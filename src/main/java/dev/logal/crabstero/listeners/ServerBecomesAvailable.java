@@ -10,6 +10,7 @@ package dev.logal.crabstero.listeners;
 
 import dev.logal.crabstero.Crabstero;
 import dev.logal.crabstero.tasks.ChannelHistoryIngestionTask;
+import org.javacord.api.entity.channel.TextableRegularServerChannel;
 import org.javacord.api.event.server.ServerBecomesAvailableEvent;
 import org.javacord.api.listener.server.ServerBecomesAvailableListener;
 
@@ -29,15 +30,17 @@ public final class ServerBecomesAvailable implements ServerBecomesAvailableListe
     }
 
     /**
-     * Queues all text channels for message history ingestion when a server becomes available.
+     * Queues all textable channels for message history ingestion when a server becomes available.
      *
      * @param event The event.
      */
     @Override
     public void onServerBecomesAvailable(final ServerBecomesAvailableEvent event) {
-        // Queue every text channel for message history ingestion.
-        event.getServer().getTextChannels().forEach((channel) -> {
-            this.crabstero.getWorkerPool().submit(new ChannelHistoryIngestionTask(channel, crabstero));
+        // Queue every textable channel for message history ingestion.
+        event.getServer().getRegularChannels().forEach((channel) -> {
+            if (channel instanceof final TextableRegularServerChannel textableChannel){
+                this.crabstero.getWorkerPool().submit(new ChannelHistoryIngestionTask(textableChannel, crabstero));
+            }
         });
     }
 }

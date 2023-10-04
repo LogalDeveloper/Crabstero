@@ -10,6 +10,7 @@ package dev.logal.crabstero.listeners;
 
 import dev.logal.crabstero.Crabstero;
 import dev.logal.crabstero.tasks.ChannelHistoryIngestionTask;
+import org.javacord.api.entity.channel.TextableRegularServerChannel;
 import org.javacord.api.event.channel.server.ServerChannelChangeOverwrittenPermissionsEvent;
 import org.javacord.api.listener.channel.server.ServerChannelChangeOverwrittenPermissionsListener;
 
@@ -35,9 +36,11 @@ public final class ServerChannelChangeOverwrittenPermissions implements ServerCh
      */
     @Override
     public void onServerChannelChangeOverwrittenPermissions(final ServerChannelChangeOverwrittenPermissionsEvent event) {
-        // Queue every text channel for message history ingestion.
-        event.getChannel().asServerTextChannel().ifPresent((channel) -> {
-            this.crabstero.getWorkerPool().submit(new ChannelHistoryIngestionTask(channel, crabstero));
+        // Queue every textable channel for message history ingestion.
+        event.getServer().getRegularChannels().forEach((channel) -> {
+            if (channel instanceof final TextableRegularServerChannel textableChannel){
+                this.crabstero.getWorkerPool().submit(new ChannelHistoryIngestionTask(textableChannel, crabstero));
+            }
         });
     }
 }

@@ -10,6 +10,7 @@ package dev.logal.crabstero.listeners;
 
 import dev.logal.crabstero.Crabstero;
 import dev.logal.crabstero.tasks.ChannelHistoryIngestionTask;
+import org.javacord.api.entity.channel.TextableRegularServerChannel;
 import org.javacord.api.event.server.role.RoleChangePermissionsEvent;
 import org.javacord.api.listener.server.role.RoleChangePermissionsListener;
 
@@ -37,9 +38,11 @@ public final class RoleChangePermissions implements RoleChangePermissionsListene
     public void onRoleChangePermissions(final RoleChangePermissionsEvent event) {
         // Does the updated role include Crabstero as a member?
         if (event.getRole().hasUser(event.getApi().getYourself())) {
-            // Queue every text channel for message history ingestion.
-            event.getServer().getTextChannels().forEach((channel) -> {
-                this.crabstero.getWorkerPool().submit(new ChannelHistoryIngestionTask(channel, crabstero));
+            // Queue every textable channel for message history ingestion.
+            event.getServer().getRegularChannels().forEach((channel) -> {
+                if (channel instanceof final TextableRegularServerChannel textableChannel){
+                    this.crabstero.getWorkerPool().submit(new ChannelHistoryIngestionTask(textableChannel, crabstero));
+                }
             });
         }
     }

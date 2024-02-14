@@ -39,16 +39,16 @@ public final class MessageCreate implements MessageCreateListener {
      */
     @Override
     public void onMessageCreate(final MessageCreateEvent event) {
-        // Is this message being created outside of a server text channel, a server thread channel, or a server voice channel?
+        // Is this message being created outside a server text channel, a server thread channel, or a server voice channel?
         final TextChannel channel = event.getChannel();
         if (channel.asServerTextChannel().isEmpty() && channel.asServerThreadChannel().isEmpty() && channel.asServerVoiceChannel().isEmpty()) {
             // Yes. Ignore it.
             return;
         }
 
-        // Is the user creating this message another bot, a webhook, or Crabstero itself?
+        // Is the user creating this message not a regular user or Crabstero itself?
         final MessageAuthor author = event.getMessageAuthor();
-        if (author.isBotUser() || author.isWebhook() || author.isYourself()) {
+        if (!author.isRegularUser() || author.isYourself()) {
             // Yes. Ignore it.
             return;
         }

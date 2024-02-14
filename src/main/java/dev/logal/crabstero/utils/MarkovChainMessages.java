@@ -28,12 +28,17 @@ import java.util.Random;
  * Assists with generating Discord messages in response to other users and ingesting raw messages.
  */
 public class MarkovChainMessages {
+    private static final String NO_REPLY_FLAG = "noReply";
+    private static final String NO_INGEST_FLAG = "noIngest";
+
     private final Crabstero crabstero;
+    private final FlagManager flagManager;
     private final AllowedMentions allowedMentions;
     private final Random rng = new SecureRandom();
 
     public MarkovChainMessages(final Crabstero crabstero) {
         this.crabstero = crabstero;
+        this.flagManager = new FlagManager(crabstero);
 
         // Set up an allowed mentions filter which blocks any mentions from generating notifications to users.
         final AllowedMentionsBuilder builder = new AllowedMentionsBuilder();
@@ -57,6 +62,15 @@ public class MarkovChainMessages {
             return;
         }
 
+        // Is a flag set on the text channel or server this message was sent in or the user who sent the message to prevent replying?
+        // TODO: The blind get()s are safe for now as MessageCreate does the necessary checks, but this could be done better.
+        if (flagManager.isFlagSet(channel, NO_REPLY_FLAG) ||
+                flagManager.isFlagSet(message.getServer().get(), NO_REPLY_FLAG) ||
+                flagManager.isFlagSet(message.getAuthor().asUser().get(), NO_REPLY_FLAG)){
+            // Yes, don't reply.
+            return;
+        }
+
         final long channelID;
         // Is this channel a thread?
         if (channel.asServerThreadChannel().isPresent()) {
@@ -66,7 +80,6 @@ public class MarkovChainMessages {
             // No. Store the ID of the channel the message was sent in.
             channelID = channel.getId();
         }
-
 
         final MessageBuilder response = new MessageBuilder();
         final MarkovChain markovChain = new MarkovChain(channelID, this.crabstero);
@@ -88,7 +101,7 @@ public class MarkovChainMessages {
             try (final Jedis jedis = this.crabstero.getJedisPool().getResource()) {
                 final List<String> embedImageURLs = jedis.lrange(channelID + ":images", 0, -1);
 
-                if (embedImageURLs.size() > 0) {
+                if (!embedImageURLs.isEmpty()) {
                     embed.setImage(embedImageURLs.get(this.rng.nextInt(embedImageURLs.size())));
                 }
             }
@@ -114,9 +127,18 @@ public class MarkovChainMessages {
      */
     public void ingestMessage(final Message message) {
         final MessageAuthor author = message.getAuthor();
-        // Is the author of the message a bot, a webhook, or mentioning Crabstero?
-        if (author.isBotUser() || author.isWebhook() || message.getMentionedUsers().contains(message.getApi().getYourself())) {
+        // Is the author of the message not a regular user or mentioning Crabstero?
+        if (!author.isRegularUser() || message.getMentionedUsers().contains(message.getApi().getYourself())) {
             // Yes. Ignore it.
+            return;
+        }
+
+        // Is a flag set on the text channel or server this message was sent in or the user who sent the message to prevent ingestion?
+        // TODO: The blind get()s are safe for now as MessageCreate does the necessary checks, but this could be done better.
+        if (flagManager.isFlagSet(message.getChannel(), NO_INGEST_FLAG) ||
+                flagManager.isFlagSet(message.getServer().get(), NO_INGEST_FLAG) ||
+                flagManager.isFlagSet(message.getAuthor().asUser().get(), NO_INGEST_FLAG)){
+            // Yes, don't reply.
             return;
         }
 
@@ -139,7 +161,7 @@ public class MarkovChainMessages {
      * @param channelID The ID of the channel to use for the Markov Chain.
      * @param embed     The embed to ingest.
      */
-    public void ingestEmbed(final long channelID, final Embed embed) {
+    private void ingestEmbed(final long channelID, final Embed embed) {
         // Get the Markov chain for the given channel ID.
         final MarkovChain markovChain = new MarkovChain(channelID, this.crabstero);
 

@@ -17,6 +17,7 @@ import org.javacord.api.entity.message.embed.Embed;
 import org.javacord.api.entity.message.embed.EmbedBuilder;
 import org.javacord.api.entity.message.mention.AllowedMentions;
 import org.javacord.api.entity.message.mention.AllowedMentionsBuilder;
+import org.javacord.api.interaction.SlashCommandOptionType;
 import org.javacord.api.util.logging.ExceptionLogger;
 import redis.clients.jedis.Jedis;
 
@@ -105,9 +106,6 @@ public class MarkovChainMessages {
                     embed.setImage(embedImageURLs.get(this.rng.nextInt(embedImageURLs.size())));
                 }
             }
-
-            // Add a watermark to the footer of the embed.
-            embed.setFooter("Crabstero is a logal.dev project", "https://logal.dev/images/logo.png");
 
             // Attach the embed to the response.
             response.setEmbed(embed);

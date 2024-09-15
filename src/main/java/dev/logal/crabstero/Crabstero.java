@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Logan Fick
+ * Copyright 2024 Logan Fick
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at: https://www.apache.org/licenses/LICENSE-2.0
  *
@@ -12,6 +12,7 @@ import dev.logal.crabstero.listeners.*;
 import org.javacord.api.DiscordApi;
 import org.javacord.api.DiscordApiBuilder;
 import org.javacord.api.entity.intent.Intent;
+import org.javacord.api.interaction.SlashCommand;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import redis.clients.jedis.JedisPool;
@@ -51,6 +52,7 @@ public final class Crabstero {
 
         builder.setIntents(Intent.GUILDS, Intent.GUILD_MESSAGES, Intent.MESSAGE_CONTENT);
 
+        builder.addListener(new InteractionCreate(this));
         builder.addListener(new MessageCreate(this));
         builder.addListener(new RoleChangePermissions(this));
         builder.addListener(new ServerBecomesAvailable(this));
@@ -62,6 +64,11 @@ public final class Crabstero {
 
         this.discordApi = builder.login().join();
         this.discordApi.setMessageCacheSize(0, 1);
+
+        SlashCommand.with("pingme", "Opts into (or back out of) receiving pings for generated message which mention you.")
+                .setDefaultEnabledForEveryone()
+                .createGlobal(this.discordApi)
+                .join();
     }
 
     /**

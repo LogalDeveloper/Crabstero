@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Logan Fick
+ * Copyright 2024 Logan Fick
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at: https://www.apache.org/licenses/LICENSE-2.0
  *
@@ -15,7 +15,6 @@ import org.javacord.api.entity.message.MessageAuthor;
 import org.javacord.api.entity.message.MessageBuilder;
 import org.javacord.api.entity.message.embed.Embed;
 import org.javacord.api.entity.message.embed.EmbedBuilder;
-import org.javacord.api.entity.message.mention.AllowedMentions;
 import org.javacord.api.entity.message.mention.AllowedMentionsBuilder;
 import org.javacord.api.util.logging.ExceptionLogger;
 import redis.clients.jedis.Jedis;
@@ -23,6 +22,8 @@ import redis.clients.jedis.Jedis;
 import java.security.SecureRandom;
 import java.util.List;
 import java.util.Random;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Assists with generating Discord messages in response to other users and ingesting raw messages.
@@ -30,22 +31,24 @@ import java.util.Random;
 public class MarkovChainMessages {
     private static final String NO_REPLY_FLAG = "noReply";
     private static final String NO_INGEST_FLAG = "noIngest";
+    private static final String ALLOW_PINGS_FLAG = "allowPings";
+    private static final String USER_WITH_OPTIONAL_NICKNAME_REGEX = "<@!?(?<id>\\d{17,20})>"; // Copied from discordjs/discord-api-types: https://github.com/discordjs/discord-api-types/blob/7fe434114e91c80ed79f0204ae6c73047672d55d/globals.ts#L30
 
     private final Crabstero crabstero;
     private final FlagManager flagManager;
-    private final AllowedMentions allowedMentions;
+    private final Pattern mentionPattern;
     private final Random rng = new SecureRandom();
 
+    /**
+     * Creates a new Markov Chain message assistant owned by a given instance of Crabstero.
+     *
+     * @param crabstero The instance of Crabstero.
+     */
     public MarkovChainMessages(final Crabstero crabstero) {
         this.crabstero = crabstero;
         this.flagManager = new FlagManager(crabstero);
 
-        // Set up an allowed mentions filter which blocks any mentions from generating notifications to users.
-        final AllowedMentionsBuilder builder = new AllowedMentionsBuilder();
-        builder.setMentionEveryoneAndHere(false);
-        builder.setMentionRoles(false);
-        builder.setMentionUsers(false);
-        this.allowedMentions = builder.build();
+        this.mentionPattern = Pattern.compile(USER_WITH_OPTIONAL_NICKNAME_REGEX);
     }
 
     /**
@@ -66,7 +69,7 @@ public class MarkovChainMessages {
         // TODO: The blind get()s are safe for now as MessageCreate does the necessary checks, but this could be done better.
         if (flagManager.isFlagSet(channel, NO_REPLY_FLAG) ||
                 flagManager.isFlagSet(message.getServer().get(), NO_REPLY_FLAG) ||
-                flagManager.isFlagSet(message.getAuthor().asUser().get(), NO_REPLY_FLAG)){
+                flagManager.isFlagSet(message.getAuthor().asUser().get(), NO_REPLY_FLAG)) {
             // Yes, don't reply.
             return;
         }
@@ -88,7 +91,8 @@ public class MarkovChainMessages {
         response.replyTo(message);
 
         // Generate a new body.
-        response.setContent(markovChain.generate(750, 1000));
+        final String body = markovChain.generate(750, 1000);
+        response.setContent(body);
 
         // Was a random number greater than 0.95 (5% of the time) and does Crabstero have permission to use embeds in this channel?
         if (this.rng.nextDouble() >= 0.95 && channel.canYouEmbedLinks()) {
@@ -110,8 +114,28 @@ public class MarkovChainMessages {
             response.setEmbed(embed);
         }
 
-        // Set the allowed mentions filter which blocks all mentions from generating notifications.
-        response.setAllowedMentions(allowedMentions);
+        // Build an allowed mentions filter which, by default, does not allow mentions in the response to generate pings.
+        final AllowedMentionsBuilder builder = new AllowedMentionsBuilder();
+        builder.setMentionEveryoneAndHere(false);
+        builder.setMentionRoles(false);
+        builder.setMentionUsers(false);
+
+        // Search for mentions in the generated body sentence.
+        Matcher mentionMatcher = mentionPattern.matcher(body);
+
+        // For each detected mention in the body sentence...
+        while (mentionMatcher.find()) {
+            // Get the user ID from the mention
+            String id = mentionMatcher.group("id");
+
+            // Did this mentioned user opt into receiving pings for mentions?
+            if (this.flagManager.isFlagSet(FlagManager.USER_DB_PREFIX, id, ALLOW_PINGS_FLAG)) {
+                builder.addUser(id); // Add the user to the filter to allow a ping to generate.
+            }
+        }
+
+        // Attach the final allowed mentions filter to the response.
+        response.setAllowedMentions(builder.build());
 
         // Send the response.
         response.send(channel).exceptionally(ExceptionLogger.get());
@@ -134,7 +158,7 @@ public class MarkovChainMessages {
         // TODO: The blind get()s are safe for now as MessageCreate does the necessary checks, but this could be done better.
         if (flagManager.isFlagSet(message.getChannel(), NO_INGEST_FLAG) ||
                 flagManager.isFlagSet(message.getServer().get(), NO_INGEST_FLAG) ||
-                flagManager.isFlagSet(message.getAuthor().asUser().get(), NO_INGEST_FLAG)){
+                flagManager.isFlagSet(message.getAuthor().asUser().get(), NO_INGEST_FLAG)) {
             // Yes, don't reply.
             return;
         }

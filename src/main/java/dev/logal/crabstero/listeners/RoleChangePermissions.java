@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Logan Fick
+ * Copyright 2024 Logan Fick
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at: https://www.apache.org/licenses/LICENSE-2.0
  *
@@ -40,7 +40,7 @@ public final class RoleChangePermissions implements RoleChangePermissionsListene
         if (event.getRole().hasUser(event.getApi().getYourself())) {
             // Queue every textable channel for message history ingestion.
             event.getServer().getRegularChannels().forEach((channel) -> {
-                if (channel instanceof final TextableRegularServerChannel textableChannel){
+                if (channel instanceof final TextableRegularServerChannel textableChannel) {
                     this.crabstero.getWorkerPool().submit(new ChannelHistoryIngestionTask(textableChannel, crabstero));
                 }
             });

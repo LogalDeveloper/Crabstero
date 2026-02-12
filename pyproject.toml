@@ -1,0 +1,36 @@
+[project]
+name = "crabstero"
+dynamic = ["version"]
+description = "The simple nonversation Discord bot."
+license = "Apache-2.0"
+requires-python = ">=3.14"
+authors = [
+    { name = "Logan Fick" },
+]
+dependencies = [
+    "discord.py>=2.6.4",
+    "aiosqlite>=0.22.1",
+]
+
+[project.scripts]
+crabstero = "crabstero.__main__:main"
+
+[project.urls]
+Repository = "https://git.logal.dev/LogalDeveloper/Crabstero"
+
+[dependency-groups]
+dev = ["mypy>=1.18.1", "black>=26.1.0"]
+
+[build-system]
+requires = ["setuptools>=61.0", "setuptools-scm>=8.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["crabstero*"]
+
+[tool.setuptools_scm]
+version_file = "crabstero/_version.py"
+
+[tool.mypy]
+strict = true
+exclude = ["crabstero/_version\\.py"]

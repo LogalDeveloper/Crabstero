@@ -1,0 +1,153 @@
+# Copyright 2026 Logan Fick
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""
+The simple nonversation Discord bot.
+
+Provides the Crabstero subclass that owns the full bot lifecycle: database connection,
+cog loading, ingestion worker pool, and graceful shutdown.
+"""
+
+import asyncio
+import logging
+
+import discord
+from discord import app_commands
+from discord.ext import commands
+
+from crabstero._version import version as crabstero_version
+from crabstero.database import Database
+from crabstero.tasks.ingestion import ingest_channel
+
+logger = logging.getLogger(__name__)
+
+
+class Crabstero(commands.Bot):
+    """
+    Central bot subclass that owns all lifecycle state.
+
+    The database is opened in setup_hook and closed in close(). Background
+    ingestion is handled by a bounded queue and a fixed worker pool.
+    """
+
+    def __init__(
+        self, token: str, database_path: str, ingestion_workers: int = 4
+    ) -> None:
+        """
+        Configures intents, stores configuration, and prepares ingestion queue state.
+
+        :param token: The Discord bot token.
+        :param database_path: The file path to the SQLite database.
+        :param ingestion_workers: The number of concurrent ingestion workers.
+        """
+        intents = discord.Intents.default()
+        intents.guilds = True
+        intents.guild_messages = True
+        intents.message_content = True
+
+        super().__init__(
+            command_prefix=[],
+            intents=intents,
+            max_messages=None,  # Disables the message cache.
+        )
+
+        self._token = token
+        self._database_path = database_path
+        self._ingestion_worker_count = ingestion_workers
+        self._ingestion_queue: asyncio.Queue[
+            discord.TextChannel | discord.VoiceChannel
+        ] = asyncio.Queue()
+        self._ingestion_workers: list[asyncio.Task[None]] = []
+        self.db: Database
+
+        self.http.user_agent = f"DiscordBot (https://git.logal.dev/LogalDeveloper/Crabstero, {crabstero_version})"
+
+    async def setup_hook(self) -> None:
+        """Opens the database, starts ingestion workers, loads all cogs, and syncs slash commands if changed."""
+        self.db = await Database.connect(self._database_path)
+        self._start_ingestion_workers()
+
+        from crabstero.listeners import interaction, message, server_events
+
+        await interaction.setup(self)
+        await message.setup(self)
+        await server_events.setup(self)
+
+        # Only sync slash commands if the registered commands differ from local definitions.
+        local_commands = {
+            cmd.name: cmd.description
+            for cmd in self.tree.get_commands()
+            if isinstance(cmd, (app_commands.Command, app_commands.Group))
+        }
+        try:
+            remote_commands = {
+                cmd.name: cmd.description for cmd in await self.tree.fetch_commands()
+            }
+        except discord.HTTPException:
+            remote_commands = {}
+
+        if local_commands != remote_commands:
+            logger.info("Slash command tree has changed, syncing with Discord.")
+            await self.tree.sync()
+
+    async def on_ready(self) -> None:
+        """Logs that the bot has started successfully."""
+        logger.info("Crabstero started!")
+
+    async def start(self, token: str = "", *, reconnect: bool = True) -> None:
+        """
+        Starts the bot using the stored token by default.
+
+        :param token: Optional token override. Falls back to the stored token if empty.
+        :param reconnect: Whether to automatically reconnect on disconnect.
+        """
+        await super().start(token or self._token, reconnect=reconnect)
+
+    async def close(self) -> None:
+        """Cancels ingestion workers, closes the database, and then the bot connection."""
+        if self.is_closed():
+            return
+        logger.info("Shutting down Crabstero...")
+        for worker in self._ingestion_workers:
+            worker.cancel()
+        await asyncio.gather(*self._ingestion_workers, return_exceptions=True)
+        self._ingestion_workers.clear()
+        if hasattr(self, "db"):
+            await self.db.close()
+        await super().close()
+
+    def queue_channel_for_ingestion(
+        self, channel: discord.TextChannel | discord.VoiceChannel
+    ) -> None:
+        """
+        Enqueues a single channel for background message history ingestion.
+
+        :param channel: The channel to enqueue.
+        """
+        self._ingestion_queue.put_nowait(channel)
+
+    def _start_ingestion_workers(self) -> None:
+        """Spawns the fixed pool of ingestion worker tasks."""
+        for _ in range(self._ingestion_worker_count):
+            task = asyncio.create_task(self._ingestion_worker())
+            self._ingestion_workers.append(task)
+
+    async def _ingestion_worker(self) -> None:
+        """Loops forever pulling channels from the ingestion queue and ingesting them."""
+        while True:
+            channel = await self._ingestion_queue.get()
+            try:
+                await ingest_channel(channel, self.db)
+            finally:
+                self._ingestion_queue.task_done()

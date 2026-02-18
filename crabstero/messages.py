@@ -35,6 +35,8 @@ if TYPE_CHECKING:
 # https://github.com/discordjs/discord-api-types/blob/7fe434114e91c80ed79f0204ae6c73047672d55d/globals.ts#L30
 MENTION_PATTERN = re.compile(r"<@!?(?P<id>\d{17,20})>")
 
+_EMBED_CHANCE_THRESHOLD = 95  # Out of 100; sends an embed ~5% of the time.
+
 
 async def reply_to_message(db: Database, message: discord.Message) -> None:
     """
@@ -69,7 +71,10 @@ async def reply_to_message(db: Database, message: discord.Message) -> None:
     embed = None
 
     # 5% chance to include an embed, if the bot has permission.
-    if secrets.randbelow(100) >= 95 and channel.permissions_for(guild.me).embed_links:
+    if (
+        secrets.randbelow(100) >= _EMBED_CHANCE_THRESHOLD
+        and channel.permissions_for(guild.me).embed_links
+    ):
         embed = discord.Embed(
             title=await markov.generate(db, channel_id, 200, 300),
             description=await markov.generate(db, channel_id, 300, 500),

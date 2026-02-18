@@ -19,6 +19,7 @@ Uses aiosqlite for native async access. All methods are async def.
 """
 
 import asyncio
+import contextlib
 import logging
 from typing import Self
 
@@ -125,10 +126,8 @@ class Database:
         """Cancels the flush timer, commits any pending writes, then closes the database connection."""
         if self._flush_task is not None:
             self._flush_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._flush_task
-            except asyncio.CancelledError:
-                pass
             self._flush_task = None
         if self._pending_writes > 0:
             await self._connection.commit()

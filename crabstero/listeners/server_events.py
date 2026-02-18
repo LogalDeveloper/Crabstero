@@ -19,6 +19,7 @@ All of these events share the same outcome: queuing all textable channels for me
 ingestion when something changes that may grant new read permissions.
 """
 
+import contextlib
 import logging
 from typing import TYPE_CHECKING
 
@@ -71,10 +72,8 @@ class ServerEventsCog(commands.Cog):
 
         app_info = await self.bot.application_info()
         if app_info.owner:
-            try:
+            with contextlib.suppress(discord.HTTPException):
                 await app_info.owner.send(embed=embed)
-            except discord.HTTPException:
-                pass
 
         queue_channels_for_ingestion(guild, self.bot)
 

@@ -23,9 +23,9 @@ import asyncio
 import logging
 import os
 import signal
-import sys
+from pathlib import Path
 
-from crabstero._version import version as crabstero_version
+from crabstero import __version__ as crabstero_version
 from crabstero.bot import Crabstero
 
 logger = logging.getLogger("crabstero")
@@ -47,9 +47,7 @@ def _read_credential(name: str) -> str | None:
         return None
 
     try:
-        return (
-            open(os.path.join(credentials_dir, name)).read().strip()  # noqa: SIM115
-        )
+        return Path(credentials_dir, name).read_text().strip()
     except OSError:
         return None
 

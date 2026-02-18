@@ -26,7 +26,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from crabstero._version import version as crabstero_version
+from crabstero import __version__ as crabstero_version
 from crabstero.database import Database
 from crabstero.tasks.ingestion import ingest_channel
 

@@ -28,6 +28,7 @@ from discord.ext import commands
 
 from crabstero import __version__ as crabstero_version
 from crabstero.database import Database
+from crabstero.listeners import interaction, message, server_events
 from crabstero.tasks.ingestion import ingest_channel
 
 logger = logging.getLogger(__name__)
@@ -84,11 +85,7 @@ class Crabstero(commands.Bot):
         self.db = await Database.connect(self._database_path)
         self._start_ingestion_workers()
 
-        from crabstero.listeners import message, server_events
-
         if not self._ingest_only:
-            from crabstero.listeners import interaction
-
             await interaction.setup(self)
 
         await message.setup(self)

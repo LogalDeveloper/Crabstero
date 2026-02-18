@@ -44,13 +44,14 @@ def is_complete_sentence(sentence: str) -> bool:
     return sentence[-1] in (DEFAULT_SENTENCE_END, ".", "!", "?")
 
 
-async def ingest(db: Database, channel_id: int, paragraph: str) -> None:
+async def ingest(db: Database, channel_id: int, user_id: int, paragraph: str) -> None:
     """
     Ingests a string potentially containing multiple smaller sentences into the Markov chain
     for a given channel.
 
     :param db: The database instance.
     :param channel_id: The Discord channel ID to associate with this data.
+    :param user_id: The Discord user ID of the contributor.
     :param paragraph: The paragraph of sentences to ingest.
     """
     if not is_complete_sentence(paragraph):
@@ -61,15 +62,18 @@ async def ingest(db: Database, channel_id: int, paragraph: str) -> None:
     sentences = re.split(r"(?<=[.!?]) ", normalized)
 
     for sentence in sentences:
-        await _ingest_sentence(db, channel_id, sentence)
+        await _ingest_sentence(db, channel_id, user_id, sentence)
 
 
-async def _ingest_sentence(db: Database, channel_id: int, sentence: str) -> None:
+async def _ingest_sentence(
+    db: Database, channel_id: int, user_id: int, sentence: str
+) -> None:
     """
     Ingests a string containing a single sentence into the Markov chain for a given channel.
 
     :param db: The database instance.
     :param channel_id: The Discord channel ID to associate with this data.
+    :param user_id: The Discord user ID of the contributor.
     :param sentence: The sentence to ingest.
     """
     if not is_complete_sentence(sentence):
@@ -78,13 +82,13 @@ async def _ingest_sentence(db: Database, channel_id: int, sentence: str) -> None
     # Normalize whitespace and split into individual words.
     words = re.sub(r" +", " ", sentence.strip()).split(" ")
 
-    start_words: list[tuple[int, str]] = []
-    transitions: list[tuple[int, str, str]] = []
+    start_words: list[tuple[int, int, str]] = []
+    transitions: list[tuple[int, int, str, str]] = []
 
     for i in range(len(words) - 1):
         if i == 0:
-            start_words.append((channel_id, words[i]))
-        transitions.append((channel_id, words[i], words[i + 1]))
+            start_words.append((channel_id, user_id, words[i]))
+        transitions.append((channel_id, user_id, words[i], words[i + 1]))
 
     if start_words:
         await db.add_start_words_batch(start_words)
@@ -109,7 +113,7 @@ async def generate(
 
     # Seed the chain with a fallback sentence if the channel has no data yet.
     if word is None:
-        await _ingest_sentence(db, channel_id, "Hello world!")
+        await _ingest_sentence(db, channel_id, 0, "Hello world!")
         word = await db.get_random_start_word(channel_id)
         if word is None:
             return ""

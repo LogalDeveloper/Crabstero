@@ -42,7 +42,11 @@ class Crabstero(commands.Bot):
     """
 
     def __init__(
-        self, token: str, database_path: str, ingestion_workers: int = 4
+        self,
+        token: str,
+        database_path: str,
+        ingestion_workers: int = 4,
+        ingest_only: bool = False,
     ) -> None:
         """
         Configures intents, stores configuration, and prepares ingestion queue state.
@@ -50,6 +54,7 @@ class Crabstero(commands.Bot):
         :param token: The Discord bot token.
         :param database_path: The file path to the SQLite database.
         :param ingestion_workers: The number of concurrent ingestion workers.
+        :param ingest_only: When True, the bot only ingests data and never responds.
         """
         intents = discord.Intents.default()
         intents.guilds = True
@@ -65,6 +70,7 @@ class Crabstero(commands.Bot):
         self._token = token
         self._database_path = database_path
         self._ingestion_worker_count = ingestion_workers
+        self._ingest_only = ingest_only
         self._ingestion_queue: asyncio.Queue[
             discord.TextChannel | discord.VoiceChannel
         ] = asyncio.Queue()
@@ -78,28 +84,34 @@ class Crabstero(commands.Bot):
         self.db = await Database.connect(self._database_path)
         self._start_ingestion_workers()
 
-        from crabstero.listeners import interaction, message, server_events
+        from crabstero.listeners import message, server_events
 
-        await interaction.setup(self)
+        if not self._ingest_only:
+            from crabstero.listeners import interaction
+
+            await interaction.setup(self)
+
         await message.setup(self)
         await server_events.setup(self)
 
-        # Only sync slash commands if the registered commands differ from local definitions.
-        local_commands = {
-            cmd.name: cmd.description
-            for cmd in self.tree.get_commands()
-            if isinstance(cmd, (app_commands.Command, app_commands.Group))
-        }
-        try:
-            remote_commands = {
-                cmd.name: cmd.description for cmd in await self.tree.fetch_commands()
+        if not self._ingest_only:
+            # Only sync slash commands if the registered commands differ from local definitions.
+            local_commands = {
+                cmd.name: cmd.description
+                for cmd in self.tree.get_commands()
+                if isinstance(cmd, (app_commands.Command, app_commands.Group))
             }
-        except discord.HTTPException:
-            remote_commands = {}
+            try:
+                remote_commands = {
+                    cmd.name: cmd.description
+                    for cmd in await self.tree.fetch_commands()
+                }
+            except discord.HTTPException:
+                remote_commands = {}
 
-        if local_commands != remote_commands:
-            logger.info("Slash command tree has changed, syncing with Discord.")
-            await self.tree.sync()
+            if local_commands != remote_commands:
+                logger.info("Slash command tree has changed, syncing with Discord.")
+                await self.tree.sync()
 
     async def on_ready(self) -> None:
         """Logs that the bot has started successfully."""

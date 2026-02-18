@@ -59,6 +59,14 @@ class MessageCog(commands.Cog):
         if message.author.bot or message.author == self.bot.user:
             return
 
+        if self.bot._ingest_only:
+            # In ingest-only mode, never reply — only ingest eligible messages.
+            if message.type == discord.MessageType.default and not isinstance(
+                channel, discord.Thread
+            ):
+                await ingest_message(self.bot.db, message)
+            return
+
         if self.bot.user in message.mentions:
             await reply_to_message(self.bot.db, message)
             return

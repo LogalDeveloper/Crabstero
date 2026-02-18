@@ -38,25 +38,31 @@ _SCHEMA = """
 -- Each row represents one occurrence. Duplicates represent frequency weight.
 CREATE TABLE IF NOT EXISTS markov_start_words (
     channel_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
     word TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_start_channel ON markov_start_words(channel_id, word);
+CREATE INDEX IF NOT EXISTS idx_start_user ON markov_start_words(user_id);
 
 -- Markov chain word transitions.
 -- Each row represents one occurrence. Duplicates represent frequency weight.
 CREATE TABLE IF NOT EXISTS markov_transitions (
     channel_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
     word TEXT NOT NULL,
     next_word TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_transitions_channel_word ON markov_transitions(channel_id, word);
+CREATE INDEX IF NOT EXISTS idx_transitions_user ON markov_transitions(user_id);
 
 -- Image URLs per channel.
 CREATE TABLE IF NOT EXISTS channel_images (
     channel_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
     url TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_images_channel ON channel_images(channel_id);
+CREATE INDEX IF NOT EXISTS idx_images_user ON channel_images(user_id);
 
 -- Flags for channels, servers, and users.
 CREATE TABLE IF NOT EXISTS flags (
@@ -134,14 +140,15 @@ class Database:
             self._pending_writes = 0
         await self._connection.close()
 
-    async def add_start_words_batch(self, rows: list[tuple[int, str]]) -> None:
+    async def add_start_words_batch(self, rows: list[tuple[int, int, str]]) -> None:
         """
         Inserts a batch of starting words into the markov_start_words table.
 
-        :param rows: A list of (channel_id, word) tuples to insert.
+        :param rows: A list of (channel_id, user_id, word) tuples to insert.
         """
         await self._connection.executemany(
-            "INSERT INTO markov_start_words (channel_id, word) VALUES (?, ?)", rows
+            "INSERT INTO markov_start_words (channel_id, user_id, word) VALUES (?, ?, ?)",
+            rows,
         )
         await self._maybe_commit()
 
@@ -159,14 +166,16 @@ class Database:
             row = await cursor.fetchone()
             return row[0] if row else None
 
-    async def add_transitions_batch(self, rows: list[tuple[int, str, str]]) -> None:
+    async def add_transitions_batch(
+        self, rows: list[tuple[int, int, str, str]]
+    ) -> None:
         """
         Inserts a batch of word transitions into the markov_transitions table.
 
-        :param rows: A list of (channel_id, word, next_word) tuples to insert.
+        :param rows: A list of (channel_id, user_id, word, next_word) tuples to insert.
         """
         await self._connection.executemany(
-            "INSERT INTO markov_transitions (channel_id, word, next_word) VALUES (?, ?, ?)",
+            "INSERT INTO markov_transitions (channel_id, user_id, word, next_word) VALUES (?, ?, ?, ?)",
             rows,
         )
         await self._maybe_commit()
@@ -207,16 +216,17 @@ class Database:
             row = await cursor.fetchone()
             return row[0] if row else None
 
-    async def add_image(self, channel_id: int, url: str) -> None:
+    async def add_image(self, channel_id: int, user_id: int, url: str) -> None:
         """
         Stores an image URL for a given channel.
 
         :param channel_id: The Discord channel ID.
+        :param user_id: The Discord user ID of the contributor.
         :param url: The image URL to store.
         """
         await self._connection.execute(
-            "INSERT INTO channel_images (channel_id, url) VALUES (?, ?)",
-            (channel_id, url),
+            "INSERT INTO channel_images (channel_id, user_id, url) VALUES (?, ?, ?)",
+            (channel_id, user_id, url),
         )
         await self._maybe_commit()
 

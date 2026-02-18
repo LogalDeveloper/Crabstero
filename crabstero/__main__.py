@@ -80,6 +80,12 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=int(os.environ.get("INGESTION_WORKERS", "4")),
         help="Number of concurrent ingestion workers (default: INGESTION_WORKERS environment variable or 4).",
     )
+    parser.add_argument(
+        "--ingest-only",
+        action="store_true",
+        default=False,
+        help="Run in ingest-only mode: ingest channel history and real-time messages but never respond.",
+    )
 
     args = parser.parse_args(argv)
 
@@ -108,6 +114,7 @@ def main() -> None:
         token=args.token,
         database_path=args.database_path,
         ingestion_workers=args.ingestion_workers,
+        ingest_only=args.ingest_only,
     )
 
     async def _run() -> None:

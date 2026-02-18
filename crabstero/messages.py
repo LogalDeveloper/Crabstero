@@ -136,27 +136,31 @@ async def ingest_message(db: Database, message: discord.Message) -> None:
         return
 
     channel_id = message.channel.id
+    user_id = message.author.id
 
     if message.content:
-        await markov.ingest(db, channel_id, message.content)
+        await markov.ingest(db, channel_id, user_id, message.content)
 
     for embed in message.embeds:
-        await _ingest_embed(db, channel_id, embed)
+        await _ingest_embed(db, channel_id, user_id, embed)
 
 
-async def _ingest_embed(db: Database, channel_id: int, embed: discord.Embed) -> None:
+async def _ingest_embed(
+    db: Database, channel_id: int, user_id: int, embed: discord.Embed
+) -> None:
     """
     Ingests a given embed into a given channel's Markov chain.
 
     :param db: The database instance.
     :param channel_id: The ID of the channel to use for the Markov chain.
+    :param user_id: The Discord user ID of the contributor.
     :param embed: The embed to ingest.
     """
     if embed.title:
-        await markov.ingest(db, channel_id, embed.title)
+        await markov.ingest(db, channel_id, user_id, embed.title)
 
     if embed.description:
-        await markov.ingest(db, channel_id, embed.description)
+        await markov.ingest(db, channel_id, user_id, embed.description)
 
     if embed.image and embed.image.url:
-        await db.add_image(channel_id, embed.image.url)
+        await db.add_image(channel_id, user_id, embed.image.url)

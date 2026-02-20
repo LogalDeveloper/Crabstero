@@ -12,10 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-Entry point for the Crabstero Discord bot.
+"""Entry point for the Crabstero Discord bot.
 
-Provides an argparse CLI with environment variable and systemd credential fallbacks for --token and --database-path.
+Provides an argparse CLI with environment variable and systemd credential
+fallbacks for --token and --database-path.
 """
 
 import argparse
@@ -32,8 +32,7 @@ logger = logging.getLogger("crabstero")
 
 
 def _read_credential(name: str) -> str | None:
-    """
-    Read a value from a systemd credential file.
+    """Read a value from a systemd credential file.
 
     Looks for a file named *name* inside the directory pointed to by the
     ``CREDENTIALS_DIRECTORY`` environment variable (set automatically by
@@ -53,8 +52,7 @@ def _read_credential(name: str) -> str | None:
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    """
-    Parses command-line arguments with environment variable fallbacks.
+    """Parse command-line arguments with environment variable fallbacks.
 
     :param argv: Optional argument list (defaults to sys.argv[1:]).
     :return: Parsed arguments namespace.
@@ -66,41 +64,57 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--token",
         default=os.environ.get("TOKEN") or _read_credential("token"),
-        help="Discord bot token (default: TOKEN environment variable or systemd credential 'token').",
+        help=(
+            "Discord bot token"
+            " (default: TOKEN environment variable"
+            " or systemd credential 'token')."
+        ),
     )
     parser.add_argument(
         "--database-path",
         "--database",
         default=os.environ.get("DATABASE_PATH", "crabstero.db"),
-        help='Path to the SQLite database file (default: DATABASE_PATH environment variable or "crabstero.db").',
+        help=(
+            "Path to the SQLite database file"
+            " (default: DATABASE_PATH environment"
+            ' variable or "crabstero.db").'
+        ),
     )
     parser.add_argument(
         "--ingestion-workers",
         type=int,
         default=int(os.environ.get("INGESTION_WORKERS", "4")),
-        help="Number of concurrent ingestion workers (default: INGESTION_WORKERS environment variable or 4).",
+        help=(
+            "Number of concurrent ingestion workers"
+            " (default: INGESTION_WORKERS environment"
+            " variable or 4)."
+        ),
     )
     parser.add_argument(
         "--ingest-only",
         action="store_true",
         default=False,
-        help="Run in ingest-only mode: ingest channel history and real-time messages but never respond.",
+        help=(
+            "Run in ingest-only mode: ingest channel"
+            " history and real-time messages but"
+            " never respond."
+        ),
     )
 
     args = parser.parse_args(argv)
 
     if args.token is None:
         parser.error(
-            "a Discord bot token is required via --token, the TOKEN environment variable, or a systemd credential named 'token'"
+            "a Discord bot token is required via --token,"
+            " the TOKEN environment variable,"
+            " or a systemd credential named 'token'"
         )
 
     return args
 
 
 def main() -> None:
-    """
-    Main entry point. Parses arguments, configures logging, and starts the bot.
-    """
+    """Run the bot. Parse arguments, configure logging, and start the bot."""
     args = _parse_args()
 
     logging.basicConfig(

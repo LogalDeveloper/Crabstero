@@ -12,8 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-Provides async convenience wrappers around the database flag methods.
+"""Provides async convenience wrappers around the database flag methods.
 
 Accepts discord.py objects or raw integer IDs and translates them into the
 entity_type/entity_id pairs used by the database layer.
@@ -45,8 +44,7 @@ class EntityType(enum.Enum):
 
 
 def _entity_id(entity: discord.abc.Snowflake | int) -> str:
-    """
-    Extracts a string entity ID from a Discord object or raw integer ID.
+    """Extract a string entity ID from a Discord object or raw integer ID.
 
     :param entity: A Discord entity or raw integer ID.
     :return: The entity ID as a string.
@@ -60,8 +58,7 @@ async def set_flag(
     entity_type: EntityType,
     flag: Flag,
 ) -> None:
-    """
-    Sets a flag on a given entity.
+    """Set a flag on a given entity.
 
     :param db: The database instance.
     :param entity: The Discord entity or raw integer ID to set the flag on.
@@ -77,8 +74,7 @@ async def clear_flag(
     entity_type: EntityType,
     flag: Flag,
 ) -> None:
-    """
-    Clears a flag on a given entity.
+    """Clear a flag on a given entity.
 
     :param db: The database instance.
     :param entity: The Discord entity or raw integer ID to clear the flag on.
@@ -94,8 +90,7 @@ async def is_flag_set(
     entity_type: EntityType,
     flag: Flag,
 ) -> bool:
-    """
-    Checks whether a flag is set on a given entity.
+    """Check whether a flag is set on a given entity.
 
     :param db: The database instance.
     :param entity: The Discord entity or raw integer ID to check.

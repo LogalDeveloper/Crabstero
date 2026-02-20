@@ -12,11 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-Assists with generating Discord messages in response to other users and ingesting raw messages.
+"""Generate Discord reply messages and ingest raw messages.
 
-Orchestrates Markov chain generation and ingestion in the context of Discord messages, handling
-reply logic, embed generation, mention filtering, and message ingestion with flag checks.
+Orchestrates Markov chain generation and ingestion in the context of
+Discord messages, handling reply logic, embed generation, mention
+filtering, and message ingestion with flag checks.
 """
 
 import re
@@ -39,8 +39,7 @@ _EMBED_CHANCE_THRESHOLD = 95  # Out of 100; sends an embed ~5% of the time.
 
 
 async def reply_to_message(db: Database, message: discord.Message) -> None:
-    """
-    Sends a new message in Discord in response to a given message.
+    """Send a new message in Discord in response to a given message.
 
     :param db: The database instance.
     :param message: The message prompting the response.
@@ -115,8 +114,7 @@ async def reply_to_message(db: Database, message: discord.Message) -> None:
 
 
 async def ingest_message(db: Database, message: discord.Message) -> None:
-    """
-    Ingests a given message into its channel's Markov chain.
+    """Ingest a given message into its channel's Markov chain.
 
     :param db: The database instance.
     :param message: The message to ingest.
@@ -148,8 +146,7 @@ async def ingest_message(db: Database, message: discord.Message) -> None:
 async def _ingest_embed(
     db: Database, channel_id: int, user_id: int, embed: discord.Embed
 ) -> None:
-    """
-    Ingests a given embed into a given channel's Markov chain.
+    """Ingest a given embed into a given channel's Markov chain.
 
     :param db: The database instance.
     :param channel_id: The ID of the channel to use for the Markov chain.

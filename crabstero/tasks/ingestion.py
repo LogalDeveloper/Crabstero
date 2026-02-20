@@ -12,8 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-Bulk-ingests the message history of channels.
+"""Bulk-ingests the message history of channels.
 
 Channels are enqueued for processing by the bot's fixed ingestion worker pool.
 """
@@ -37,8 +36,7 @@ logger = logging.getLogger(__name__)
 
 
 def queue_channels_for_ingestion(guild: discord.Guild, bot: Crabstero) -> None:
-    """
-    Enqueues every textable channel in a guild for message history ingestion.
+    """Enqueue every textable channel in a guild for message history ingestion.
 
     :param guild: The Discord guild whose channels should be ingested.
     :param bot: The bot instance.
@@ -52,9 +50,10 @@ async def ingest_channel(
     channel: discord.TextChannel | discord.VoiceChannel,
     db: Database,
 ) -> None:
-    """
-    Bulk-ingests the message history of a given channel. The task will be ended early if
-    permissions do not allow ingesting this channel or if it has already been ingested in the past.
+    """Bulk-ingest the message history of a given channel.
+
+    End early if permissions do not allow ingesting this channel or if it has
+    already been ingested.
 
     :param channel: The channel to ingest.
     :param db: The database instance.
@@ -62,7 +61,8 @@ async def ingest_channel(
     try:
         if not channel.permissions_for(channel.guild.me).read_message_history:
             logger.warning(
-                "[%s] Unable to ingest textable channel history due to lacking permissions. Ignoring.",
+                "[%s] Unable to ingest channel history"
+                " due to lacking permissions. Ignoring.",
                 channel.id,
             )
             return
@@ -80,7 +80,7 @@ async def ingest_channel(
             await ingest_message(db, message)
 
         logger.info(
-            "[%s] Ingestion of textable channel history complete. %d messages ingested.",
+            "[%s] Ingestion of channel history complete. %d messages ingested.",
             channel.id,
             count,
         )

@@ -25,6 +25,8 @@ dev = [
     "pytest-cov>=7.0.0",
     "mypy>=1.18.1",
     "ruff>=0.15.1",
+    "pip-audit>=2.10.0",
+    "codespell>=2.4.1",
 ]
 
 [tool.uv]
@@ -60,19 +62,62 @@ extend-exclude = ["crabstero/_version.py"]
 
 [tool.ruff.lint]
 select = [
+    # Core
     "F",     # Pyflakes
     "E",     # pycodestyle errors
     "W",     # pycodestyle warnings
+    "N",     # pep8-naming
+    "D",     # pydocstyle
     "I",     # isort
-    "UP",    # pyupgrade
+    "ICN",   # flake8-import-conventions
+
+    # Correctness & bugs
     "B",     # flake8-bugbear
+    "ASYNC", # flake8-async
+    "DTZ",   # flake8-datetimez
+    "RSE",   # flake8-raise
+    "RET",   # flake8-return
+    "A",     # flake8-builtins
+    "PIE",   # flake8-pie
+
+    # Modernization & simplification
+    "UP",    # pyupgrade
     "SIM",   # flake8-simplify
+    "C4",    # flake8-comprehensions
+    "FLY",   # flynt (f-string conversion)
+    "PTH",   # flake8-use-pathlib
+
+    # Performance
+    "PERF",  # Perflint
+
+    # Security
+    "S",     # flake8-bandit
+
+    # Code hygiene
+    "T10",   # flake8-debugger
+    "T20",   # flake8-print
+    "ERA",   # eradicate
+    "PGH",   # pygrep-hooks
     "TCH",   # flake8-type-checking
+
+    # Testing
+    "PT",    # flake8-pytest-style
+
+    # Ruff-specific
     "RUF",   # Ruff-specific rules
 ]
 ignore = [
-    "E501",  # line length enforced by the formatter; residual violations are in strings/docstrings/comments
+    "D203",  # incompatible with D211 (no blank line before class docstring)
+    "D213",  # incompatible with D212 (summary on first line)
 ]
+
+[tool.ruff.lint.per-file-ignores]
+"crabstero/__init__.py" = ["E402"]     # constants defined before imports intentionally
+"crabstero/__main__.py" = ["T201"]     # CLI entry point uses print() for user output
+"tests/**" = ["S101", "S311"]          # assert is standard for pytest; random is fine in tests
+
+[tool.codespell]
+skip = "crabstero/_version.py,uv.lock"
 
 [tool.coverage.run]
 source = ["crabstero"]

@@ -12,10 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-Handles created messages.
+"""Handles created messages.
 
-Responds to mentions and ingests normal text messages as a Cog with an on_message listener.
+Responds to mentions and ingests normal text messages as a Cog with an
+on_message listener.
 """
 
 from typing import TYPE_CHECKING
@@ -30,13 +30,10 @@ if TYPE_CHECKING:
 
 
 class MessageCog(commands.Cog):
-    """
-    Cog for handling message creation events.
-    """
+    """Cog for handling message creation events."""
 
     def __init__(self, bot: Crabstero) -> None:
-        """
-        Creates a new message creation handler cog.
+        """Create a new message creation handler cog.
 
         :param bot: The bot instance.
         """
@@ -44,8 +41,7 @@ class MessageCog(commands.Cog):
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message) -> None:
-        """
-        Responds to mentions and ingests normal text messages.
+        """Respond to mentions and ingest normal text messages.
 
         :param message: The message event.
         """
@@ -79,8 +75,7 @@ class MessageCog(commands.Cog):
 
 
 async def setup(bot: Crabstero) -> None:
-    """
-    Adds the MessageCog to the bot.
+    """Add the MessageCog to the bot.
 
     :param bot: The bot instance.
     """

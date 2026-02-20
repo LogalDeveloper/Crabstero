@@ -12,8 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-The simple nonversation Discord bot.
+"""The simple nonversation Discord bot.
 
 Provides the Crabstero subclass that owns the full bot lifecycle: database connection,
 cog loading, ingestion worker pool, and graceful shutdown.
@@ -35,8 +34,7 @@ logger = logging.getLogger(__name__)
 
 
 class Crabstero(commands.Bot):
-    """
-    Central bot subclass that owns all lifecycle state.
+    """Central bot subclass that owns all lifecycle state.
 
     The database is opened in setup_hook and closed in close(). Background
     ingestion is handled by a bounded queue and a fixed worker pool.
@@ -49,8 +47,7 @@ class Crabstero(commands.Bot):
         ingestion_workers: int = 4,
         ingest_only: bool = False,
     ) -> None:
-        """
-        Configures intents, stores configuration, and prepares ingestion queue state.
+        """Configure intents, store configuration, and prepare ingestion queue state.
 
         :param token: The Discord bot token.
         :param database_path: The file path to the SQLite database.
@@ -78,10 +75,11 @@ class Crabstero(commands.Bot):
         self._ingestion_workers: list[asyncio.Task[None]] = []
         self.db: Database
 
-        self.http.user_agent = f"DiscordBot (https://git.logal.dev/LogalDeveloper/Crabstero, {crabstero_version})"
+        repo_url = "https://git.logal.dev/LogalDeveloper/Crabstero"
+        self.http.user_agent = f"DiscordBot ({repo_url}, {crabstero_version})"
 
     async def setup_hook(self) -> None:
-        """Opens the database, starts ingestion workers, loads all cogs, and syncs slash commands if changed."""
+        """Open the database, start ingestion workers, and load all cogs."""
         self.db = await Database.connect(self._database_path)
         self._start_ingestion_workers()
 
@@ -92,7 +90,8 @@ class Crabstero(commands.Bot):
         await server_events.setup(self)
 
         if not self._ingest_only:
-            # Only sync slash commands if the registered commands differ from local definitions.
+            # Only sync slash commands if the registered commands
+            # differ from local definitions.
             local_commands = {
                 cmd.name: cmd.description
                 for cmd in self.tree.get_commands()
@@ -111,12 +110,11 @@ class Crabstero(commands.Bot):
                 await self.tree.sync()
 
     async def on_ready(self) -> None:
-        """Logs that the bot has started successfully."""
+        """Log that the bot has started successfully."""
         logger.info("Crabstero started!")
 
     async def start(self, token: str = "", *, reconnect: bool = True) -> None:
-        """
-        Starts the bot using the stored token by default.
+        """Start the bot using the stored token by default.
 
         :param token: Optional token override. Falls back to the stored token if empty.
         :param reconnect: Whether to automatically reconnect on disconnect.
@@ -124,7 +122,7 @@ class Crabstero(commands.Bot):
         await super().start(token or self._token, reconnect=reconnect)
 
     async def close(self) -> None:
-        """Cancels ingestion workers, closes the database, and then the bot connection."""
+        """Cancel ingestion workers, close the database, and then the bot connection."""
         if self.is_closed():
             return
         logger.info("Shutting down Crabstero...")
@@ -139,21 +137,20 @@ class Crabstero(commands.Bot):
     def queue_channel_for_ingestion(
         self, channel: discord.TextChannel | discord.VoiceChannel
     ) -> None:
-        """
-        Enqueues a single channel for background message history ingestion.
+        """Enqueue a single channel for background message history ingestion.
 
         :param channel: The channel to enqueue.
         """
         self._ingestion_queue.put_nowait(channel)
 
     def _start_ingestion_workers(self) -> None:
-        """Spawns the fixed pool of ingestion worker tasks."""
+        """Spawn the fixed pool of ingestion worker tasks."""
         for _ in range(self._ingestion_worker_count):
             task = asyncio.create_task(self._ingestion_worker())
             self._ingestion_workers.append(task)
 
     async def _ingestion_worker(self) -> None:
-        """Loops forever pulling channels from the ingestion queue and ingesting them."""
+        """Loop forever pulling channels from the ingestion queue and ingesting them."""
         while True:
             channel = await self._ingestion_queue.get()
             try:

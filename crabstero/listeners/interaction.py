@@ -12,8 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-Handles responding to interactions.
+"""Handles responding to interactions.
 
 Provides the /pingme slash command as a Cog with an app command.
 """
@@ -35,13 +34,10 @@ logger = logging.getLogger(__name__)
 
 
 class InteractionCog(commands.Cog):
-    """
-    Cog for handling slash command interactions.
-    """
+    """Cog for handling slash command interactions."""
 
     def __init__(self, bot: Crabstero) -> None:
-        """
-        Creates a new interaction handler cog.
+        """Create a new interaction handler cog.
 
         :param bot: The bot instance.
         """
@@ -49,11 +45,13 @@ class InteractionCog(commands.Cog):
 
     @app_commands.command(
         name="pingme",
-        description="Opts into (or back out of) receiving pings for generated message which mention you.",
+        description=(
+            "Opts into (or back out of) receiving pings"
+            " for generated message which mention you."
+        ),
     )
     async def pingme(self, interaction: discord.Interaction) -> None:
-        """
-        Toggles the allowPings flag for the user who ran the command.
+        """Toggle the allowPings flag for the user who ran the command.
 
         :param interaction: The interaction event.
         """
@@ -66,7 +64,9 @@ class InteractionCog(commands.Cog):
                     self.bot.db, interaction.user, EntityType.USER, Flag.ALLOW_PINGS
                 )
                 await interaction.response.send_message(
-                    "I will no longer ping you for messages which mention you. If you decide to opt back in, run `/pingme` any time.",
+                    "I will no longer ping you for messages which"
+                    " mention you. If you decide to opt back in,"
+                    " run `/pingme` any time.",
                     ephemeral=True,
                 )
             else:
@@ -74,23 +74,26 @@ class InteractionCog(commands.Cog):
                     self.bot.db, interaction.user, EntityType.USER, Flag.ALLOW_PINGS
                 )
                 await interaction.response.send_message(
-                    "I will now ping you for messages which mention you. If you change your mind, run `/pingme` any time.",
+                    "I will now ping you for messages which mention"
+                    " you. If you change your mind, run"
+                    " `/pingme` any time.",
                     ephemeral=True,
                 )
 
         except Exception:
             logger.exception(
-                "An exception occurred while attempting to execute slash command responder for command 'pingme'."
+                "An exception occurred while attempting to execute"
+                " slash command responder for command 'pingme'."
             )
             await interaction.response.send_message(
-                "An error occurred while executing your command. Please try again later.",
+                "An error occurred while executing your command."
+                " Please try again later.",
                 ephemeral=True,
             )
 
 
 async def setup(bot: Crabstero) -> None:
-    """
-    Adds the InteractionCog to the bot.
+    """Add the InteractionCog to the bot.
 
     :param bot: The bot instance.
     """

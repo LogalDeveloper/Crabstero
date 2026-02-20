@@ -12,11 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-Ingests sentences and generates new ones using a Markov chain backed by SQLite storage.
+"""Markov chain sentence ingestion and generation backed by SQLite.
 
-The Markov chain stores word transitions per channel, using duplicate rows to represent frequency
-weight. Random selection via ORDER BY RANDOM() LIMIT 1 naturally preserves this weighting.
+The Markov chain stores word transitions per channel, using duplicate rows
+to represent frequency weight. Random selection via ORDER BY RANDOM()
+LIMIT 1 naturally preserves this weighting.
 """
 
 import re
@@ -31,9 +31,10 @@ DEFAULT_SENTENCE_END = "\u00a7"
 
 
 def is_complete_sentence(sentence: str) -> bool:
-    """
-    Checks whether a given sentence ends with a default sentence end character, a period, an
-    exclamation mark, or a question mark.
+    """Check whether a sentence ends with a valid terminator.
+
+    Valid terminators are the section sign, period, exclamation mark, or
+    question mark.
 
     :param sentence: The sentence to test.
     :return: True if the sentence ends with a valid terminator, False otherwise.
@@ -45,9 +46,10 @@ def is_complete_sentence(sentence: str) -> bool:
 
 
 async def ingest(db: Database, channel_id: int, user_id: int, paragraph: str) -> None:
-    """
-    Ingests a string potentially containing multiple smaller sentences into the Markov chain
-    for a given channel.
+    """Ingest a paragraph into the Markov chain for a given channel.
+
+    The paragraph may contain multiple sentences which are split and ingested
+    individually.
 
     :param db: The database instance.
     :param channel_id: The Discord channel ID to associate with this data.
@@ -57,7 +59,8 @@ async def ingest(db: Database, channel_id: int, user_id: int, paragraph: str) ->
     if not is_complete_sentence(paragraph):
         paragraph += DEFAULT_SENTENCE_END
 
-    # Normalize whitespace, then split on sentence-ending punctuation followed by a space.
+    # Normalize whitespace, then split on sentence-ending punctuation
+    # followed by a space.
     normalized = re.sub(r" +", " ", paragraph.strip().replace("\n", " "))
     sentences = re.split(r"(?<=[.!?]) ", normalized)
 
@@ -68,8 +71,7 @@ async def ingest(db: Database, channel_id: int, user_id: int, paragraph: str) ->
 async def _ingest_sentence(
     db: Database, channel_id: int, user_id: int, sentence: str
 ) -> None:
-    """
-    Ingests a string containing a single sentence into the Markov chain for a given channel.
+    """Ingest a single sentence into the Markov chain for a given channel.
 
     :param db: The database instance.
     :param channel_id: The Discord channel ID to associate with this data.
@@ -99,14 +101,12 @@ async def _ingest_sentence(
 async def generate(
     db: Database, channel_id: int, soft_limit: int = 750, hard_limit: int = 1000
 ) -> str:
-    """
-    Generates a new sentence using words learned from previously ingested sentences for a given
-    channel.
+    """Generate a new sentence from previously ingested words for a channel.
 
     :param db: The database instance.
     :param channel_id: The Discord channel ID to generate from.
-    :param soft_limit: The amount of characters to try and limit sentence length around.
-    :param hard_limit: The amount of characters to cut off the sentence at if it gets too long.
+    :param soft_limit: Character count to aim for when wrapping up.
+    :param hard_limit: Character count to hard-cut the sentence at.
     :return: A new generated sentence.
     """
     word = await db.get_random_start_word(channel_id)

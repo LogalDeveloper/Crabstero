@@ -12,11 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-Handles server-level events which trigger channel history ingestion.
+"""Handles server-level events which trigger channel history ingestion.
 
-All of these events share the same outcome: queuing all textable channels for message history
-ingestion when something changes that may grant new read permissions.
+All of these events share the same outcome: queuing all textable channels
+for message history ingestion when something changes that may grant new
+read permissions.
 """
 
 import contextlib
@@ -35,13 +35,10 @@ logger = logging.getLogger(__name__)
 
 
 class ServerEventsCog(commands.Cog):
-    """
-    Cog for handling server-level events that trigger channel history ingestion.
-    """
+    """Cog for handling server-level events that trigger channel history ingestion."""
 
     def __init__(self, bot: Crabstero) -> None:
-        """
-        Creates a new server events handler cog.
+        """Create a new server events handler cog.
 
         :param bot: The bot instance.
         """
@@ -49,9 +46,9 @@ class ServerEventsCog(commands.Cog):
 
     @commands.Cog.listener()
     async def on_guild_join(self, guild: discord.Guild) -> None:
-        """
-        Queues all text channels for message history ingestion when joining a new server.
-        Also logs the join and sends an embed to the bot owner.
+        """Queue all text channels for ingestion when joining a new server.
+
+        Also log the join and send an embed to the bot owner.
 
         :param guild: The guild that was joined.
         """
@@ -79,8 +76,7 @@ class ServerEventsCog(commands.Cog):
 
     @commands.Cog.listener()
     async def on_guild_available(self, guild: discord.Guild) -> None:
-        """
-        Queues all textable channels for message history ingestion when a server becomes available.
+        """Queue all textable channels for ingestion when a server becomes available.
 
         :param guild: The guild that became available.
         """
@@ -90,9 +86,9 @@ class ServerEventsCog(commands.Cog):
     async def on_guild_role_update(
         self, before: discord.Role, after: discord.Role
     ) -> None:
-        """
-        Queues all text channels for message history ingestion when role permissions change,
-        but only if the bot is a member of the updated role.
+        """Queue all text channels for ingestion when role permissions change.
+
+        Only triggers if the bot is a member of the updated role.
 
         :param before: The role before the update.
         :param after: The role after the update.
@@ -107,9 +103,7 @@ class ServerEventsCog(commands.Cog):
     async def on_guild_channel_update(
         self, before: discord.abc.GuildChannel, after: discord.abc.GuildChannel
     ) -> None:
-        """
-        Queues all text channels for message history ingestion when channel override permissions
-        change.
+        """Queue all text channels for ingestion on permission change.
 
         :param before: The channel before the update.
         :param after: The channel after the update.
@@ -121,8 +115,7 @@ class ServerEventsCog(commands.Cog):
 
 
 async def setup(bot: Crabstero) -> None:
-    """
-    Adds the ServerEventsCog to the bot.
+    """Add the ServerEventsCog to the bot.
 
     :param bot: The bot instance.
     """

@@ -84,13 +84,13 @@ async def reply_to_message(db: Database, message: discord.Message) -> None:
             embed.set_image(url=random_image)
 
     # Suppress all mentions by default; only ping users who opted in.
-    allowed_user_ids: list[int] = []
+    allowed_user_ids: set[int] = set()
 
     for match in MENTION_PATTERN.finditer(body):
         user_id = int(match.group("id"))
 
         if await flags.is_flag_set(db, user_id, EntityType.USER, Flag.ALLOW_PINGS):
-            allowed_user_ids.append(user_id)
+            allowed_user_ids.add(user_id)
 
     allowed_mentions = discord.AllowedMentions(
         everyone=False,

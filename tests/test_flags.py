@@ -103,7 +103,6 @@ class TestSetClearCheck:
     async def test_set_then_check(self, db: Database, flag: Flag) -> None:
         """A set flag is reported as set."""
         await set_flag(db, 1, EntityType.CHANNEL, flag)
-        await db.commit()
         assert await is_flag_set(db, 1, EntityType.CHANNEL, flag) is True
 
     async def test_unset_returns_false(self, db: Database) -> None:
@@ -113,7 +112,5 @@ class TestSetClearCheck:
     async def test_clear_removes_flag(self, db: Database) -> None:
         """A cleared flag is no longer reported as set."""
         await set_flag(db, 1, EntityType.CHANNEL, Flag.NO_REPLY)
-        await db.commit()
         await clear_flag(db, 1, EntityType.CHANNEL, Flag.NO_REPLY)
-        await db.commit()
         assert await is_flag_set(db, 1, EntityType.CHANNEL, Flag.NO_REPLY) is False

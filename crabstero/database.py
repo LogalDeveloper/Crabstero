@@ -12,24 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Async SQLite database access for Crabstero's persistent storage.
+"""Async SQLite database access for Crabstero's persistent storage."""
 
-Uses aiosqlite for native async access. All methods are async def.
-"""
-
-import asyncio
-import contextlib
-import logging
 from typing import Self
 
 import aiosqlite
-
-logger = logging.getLogger(__name__)
-
-AUTO_COMMIT_WRITE_THRESHOLD = 100  # Commit after this many DB write operations.
-AUTO_COMMIT_TIMEOUT_SECONDS = (
-    60.0  # Commit after this many seconds since first uncommitted write.
-)
 
 # SQL statements for creating the database schema.
 _SCHEMA = """
@@ -83,8 +70,7 @@ class Database:
     """Manages all SQLite database operations for Crabstero.
 
     Uses aiosqlite for native async access. A single connection is held
-    open for the lifetime of the bot process with WAL mode enabled for
-    concurrent read performance.
+    open for the lifetime of the bot process.
     """
 
     def __init__(self, connection: aiosqlite.Connection) -> None:
@@ -93,8 +79,6 @@ class Database:
         :param connection: An open aiosqlite connection.
         """
         self._connection = connection
-        self._pending_writes = 0
-        self._flush_task: asyncio.Task[None] | None = None
 
     @classmethod
     async def connect(cls, path: str) -> Self:
@@ -108,9 +92,6 @@ class Database:
         """
         connection = await aiosqlite.connect(path)
 
-        # Enable WAL mode for better concurrent read performance.
-        await connection.execute("PRAGMA journal_mode=WAL")
-
         # Set synchronous to NORMAL for a balance between safety and speed.
         await connection.execute("PRAGMA synchronous=NORMAL")
 
@@ -120,38 +101,38 @@ class Database:
 
         return cls(connection)
 
-    async def commit(self) -> None:
-        """Commit pending writes and reset the flush timer."""
-        await self._connection.commit()
-        self._pending_writes = 0
-        if self._flush_task is not None:
-            self._flush_task.cancel()
-            self._flush_task = None
-
     async def close(self) -> None:
-        """Cancel the flush timer, commit pending writes, and close the connection."""
-        if self._flush_task is not None:
-            self._flush_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self._flush_task
-            self._flush_task = None
-        if self._pending_writes > 0:
-            await self._connection.commit()
-            self._pending_writes = 0
+        """Close the database connection."""
         await self._connection.close()
 
-    async def add_start_words_batch(self, rows: list[tuple[int, int, str]]) -> None:
-        """Insert a batch of starting words into the markov_start_words table.
+    async def add_markov_data(
+        self,
+        start_words: list[tuple[int, int, str]],
+        transitions: list[tuple[int, int, str, str]],
+    ) -> None:
+        """Insert Markov start words and transitions, then commit.
 
-        :param rows: A list of (channel_id, user_id, word) tuples to insert.
+        Both inserts happen in a single transaction.
+
+        :param start_words: A list of (channel_id, user_id, word) tuples.
+        :param transitions: A list of (channel_id, user_id, word, next_word) tuples.
         """
-        await self._connection.executemany(
-            "INSERT INTO markov_start_words"
-            " (channel_id, user_id, word)"
-            " VALUES (?, ?, ?)",
-            rows,
-        )
-        await self._maybe_commit()
+        if start_words:
+            await self._connection.executemany(
+                "INSERT INTO markov_start_words"
+                " (channel_id, user_id, word)"
+                " VALUES (?, ?, ?)",
+                start_words,
+            )
+        if transitions:
+            await self._connection.executemany(
+                "INSERT INTO markov_transitions"
+                " (channel_id, user_id, word, next_word)"
+                " VALUES (?, ?, ?, ?)",
+                transitions,
+            )
+        if start_words or transitions:
+            await self._connection.commit()
 
     async def get_random_start_word(self, channel_id: int) -> str | None:
         """Return a random starting word for a channel.
@@ -169,22 +150,6 @@ class Database:
         ) as cursor:
             row = await cursor.fetchone()
             return row[0] if row else None
-
-    async def add_transitions_batch(
-        self, rows: list[tuple[int, int, str, str]]
-    ) -> None:
-        """Insert a batch of word transitions into the markov_transitions table.
-
-        :param rows: A list of (channel_id, user_id, word, next_word)
-            tuples to insert.
-        """
-        await self._connection.executemany(
-            "INSERT INTO markov_transitions"
-            " (channel_id, user_id, word, next_word)"
-            " VALUES (?, ?, ?, ?)",
-            rows,
-        )
-        await self._maybe_commit()
 
     async def get_random_next_word(self, channel_id: int, word: str) -> str | None:
         """Return a random next word for a given word in a channel.
@@ -238,7 +203,7 @@ class Database:
             "INSERT INTO channel_images (channel_id, user_id, url) VALUES (?, ?, ?)",
             (channel_id, user_id, url),
         )
-        await self._maybe_commit()
+        await self._connection.commit()
 
     async def get_random_image(self, channel_id: int) -> str | None:
         """Return a random image URL for a given channel.
@@ -268,7 +233,7 @@ class Database:
             " VALUES (?, ?, ?)",
             (entity_type, entity_id, flag_name),
         )
-        await self._maybe_commit()
+        await self._connection.commit()
 
     async def clear_flag(
         self, entity_type: str, entity_id: str, flag_name: str
@@ -286,7 +251,7 @@ class Database:
             " AND flag_name = ?",
             (entity_type, entity_id, flag_name),
         )
-        await self._maybe_commit()
+        await self._connection.commit()
 
     async def is_flag_set(
         self, entity_type: str, entity_id: str, flag_name: str
@@ -328,23 +293,4 @@ class Database:
             "INSERT OR IGNORE INTO ingested_channels (channel_id) VALUES (?)",
             (channel_id,),
         )
-        await self._maybe_commit()
-
-    async def _maybe_commit(self) -> None:
-        """Track a pending write and commit or start a flush timer."""
-        self._pending_writes += 1
-        if self._pending_writes >= AUTO_COMMIT_WRITE_THRESHOLD:
-            await self.commit()
-        elif self._flush_task is None:
-            self._flush_task = asyncio.create_task(self._flush_after_timeout())
-
-    async def _flush_after_timeout(self) -> None:
-        """Background task that commits after the timeout elapses."""
-        try:
-            await asyncio.sleep(AUTO_COMMIT_TIMEOUT_SECONDS)
-            if self._pending_writes > 0:
-                await self.commit()
-        except asyncio.CancelledError:
-            raise
-        except Exception:
-            logger.exception("Error in database flush timer.")
+        await self._connection.commit()

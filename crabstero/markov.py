@@ -92,10 +92,7 @@ async def _ingest_sentence(
             start_words.append((channel_id, user_id, words[i]))
         transitions.append((channel_id, user_id, words[i], words[i + 1]))
 
-    if start_words:
-        await db.add_start_words_batch(start_words)
-    if transitions:
-        await db.add_transitions_batch(transitions)
+    await db.add_markov_data(start_words, transitions)
 
 
 async def generate(

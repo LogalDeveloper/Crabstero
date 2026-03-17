@@ -115,8 +115,6 @@ async def generate(
     if word is None:
         await _ingest_sentence(db, channel_id, 0, "Hello world!")
         word = await db.get_random_start_word(channel_id)
-        if word is None:
-            return ""
 
     parts: list[str] = []
     parts.append(word)

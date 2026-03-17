@@ -23,6 +23,9 @@ env/
 *.swp
 *.swo
 
+# Testing
+.coverage
+
 # Runtime data
 *.db
 .env

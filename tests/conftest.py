@@ -13,3 +13,21 @@
 # limitations under the License.
 
 """Shared pytest fixtures for the test suite."""
+
+from typing import TYPE_CHECKING
+
+import pytest
+
+from crabstero.database import Database
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+    from pathlib import Path
+
+
+@pytest.fixture
+async def db(tmp_path: Path) -> AsyncIterator[Database]:
+    """Yield a Database backed by a temporary SQLite file."""
+    database = await Database.connect(str(tmp_path / "test.db"))
+    yield database
+    await database.close()

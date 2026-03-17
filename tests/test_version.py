@@ -12,12 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for version availability."""
+"""Unit tests for package version availability."""
 
 import crabstero
 
 
-def test_version_is_available() -> None:
-    """Verify __version__ is a non-empty string."""
-    assert isinstance(crabstero.__version__, str)
-    assert crabstero.__version__
+class TestVersion:
+    """Package version metadata."""
+
+    def test_version_is_available(self) -> None:
+        """__version__ is a non-empty string."""
+        assert isinstance(crabstero.__version__, str)
+        assert crabstero.__version__

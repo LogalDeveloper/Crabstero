@@ -114,7 +114,7 @@ async def generate(
     # Seed the chain with a fallback sentence if the channel has no data yet.
     if word is None:
         await _ingest_sentence(db, channel_id, 0, "Hello world!")
-        word = await db.get_random_start_word(channel_id)
+        word = "Hello"  # Known start word from the fallback sentence above.
 
     parts: list[str] = []
     parts.append(word)

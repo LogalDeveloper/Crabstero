@@ -28,6 +28,13 @@ from discord.ext import commands
 from crabstero import __version__ as crabstero_version
 from crabstero.database import Database
 from crabstero.listeners import interaction, message, server_events
+from crabstero.metrics import (
+    DISCORD_EVENTS,
+    DISCORD_LATENCY,
+    GUILD_COUNT,
+    INGESTION_BACKLOG,
+    MetricsServer,
+)
 from crabstero.tasks.ingestion import ingest_channel
 
 logger = logging.getLogger(__name__)
@@ -46,6 +53,7 @@ class Crabstero(commands.Bot):
         database_path: str,
         ingestion_workers: int = 4,
         ingest_only: bool = False,
+        metrics_address: tuple[str, int] | None = None,
     ) -> None:
         """Configure intents, store configuration, and prepare ingestion queue state.
 
@@ -53,6 +61,7 @@ class Crabstero(commands.Bot):
         :param database_path: The file path to the SQLite database.
         :param ingestion_workers: The number of concurrent ingestion workers.
         :param ingest_only: When True, the bot only ingests data and never responds.
+        :param metrics_address: Optional (host, port) for the Prometheus metrics server.
         """
         intents = discord.Intents.default()
         intents.guilds = True
@@ -75,6 +84,12 @@ class Crabstero(commands.Bot):
         self._ingestion_workers: list[asyncio.Task[None]] = []
         self.db: Database
 
+        self._metrics_address = metrics_address
+
+        DISCORD_LATENCY.set_function(lambda: self.latency)
+        GUILD_COUNT.set_function(lambda: len(self.guilds))
+        INGESTION_BACKLOG.set_function(lambda: self._ingestion_queue.qsize())
+
         repo_url = "https://git.logal.dev/LogalDeveloper/Crabstero"
         self.http.user_agent = f"DiscordBot ({repo_url}, {crabstero_version})"
 
@@ -82,6 +97,10 @@ class Crabstero(commands.Bot):
         """Open the database, start ingestion workers, and load all cogs."""
         self.db = await Database.connect(self._database_path)
         self._start_ingestion_workers()
+
+        if self._metrics_address is not None:
+            self._metrics_server = MetricsServer(*self._metrics_address)
+            await self._metrics_server.start()
 
         if not self._ingest_only:
             await interaction.setup(self)
@@ -109,6 +128,14 @@ class Crabstero(commands.Bot):
                 logger.info("Slash command tree has changed, syncing with Discord.")
                 await self.tree.sync()
 
+    def dispatch(self, event: str, /, *args: object, **kwargs: object) -> None:
+        """Dispatch an event, incrementing the events counter.
+
+        :param event: The event name.
+        """
+        DISCORD_EVENTS.labels(event=event).inc()
+        super().dispatch(event, *args, **kwargs)
+
     async def on_ready(self) -> None:
         """Log that the bot has started successfully."""
         logger.info("Crabstero started!")
@@ -130,6 +157,8 @@ class Crabstero(commands.Bot):
             worker.cancel()
         await asyncio.gather(*self._ingestion_workers, return_exceptions=True)
         self._ingestion_workers.clear()
+        if hasattr(self, "_metrics_server"):
+            await self._metrics_server.stop()
         if hasattr(self, "db"):
             await self.db.close()
         await super().close()

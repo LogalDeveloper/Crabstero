@@ -25,7 +25,7 @@ from typing import TYPE_CHECKING
 
 import discord
 
-from crabstero import flags, markov
+from crabstero import flags, markov, metrics
 from crabstero.flags import EntityType, Flag
 
 if TYPE_CHECKING:
@@ -105,12 +105,14 @@ async def reply_to_message(db: Database, message: discord.Message) -> None:
             allowed_mentions=allowed_mentions,
             mention_author=False,
         )
+        metrics.EMBEDS_GENERATED.inc()
     else:
         await message.reply(
             content=body,
             allowed_mentions=allowed_mentions,
             mention_author=False,
         )
+    metrics.REPLIES_SENT.inc()
 
 
 async def ingest_message(db: Database, message: discord.Message) -> None:
@@ -136,11 +138,17 @@ async def ingest_message(db: Database, message: discord.Message) -> None:
     channel_id = message.channel.id
     user_id = message.author.id
 
-    if message.content:
-        await markov.ingest(db, channel_id, user_id, message.content)
+    if not message.content and not message.embeds:
+        return
 
-    for embed in message.embeds:
-        await _ingest_embed(db, channel_id, user_id, embed)
+    with metrics.MESSAGE_INGESTION_DURATION.time():
+        if message.content:
+            await markov.ingest(db, channel_id, user_id, message.content)
+
+        for embed in message.embeds:
+            await _ingest_embed(db, channel_id, user_id, embed)
+
+    metrics.MESSAGES_INGESTED.inc()
 
 
 async def _ingest_embed(

@@ -24,7 +24,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from crabstero import flags
+from crabstero import flags, metrics
 from crabstero.flags import EntityType, Flag
 
 if TYPE_CHECKING:
@@ -63,6 +63,7 @@ class InteractionCog(commands.Cog):
                 await flags.clear_flag(
                     self.bot.db, interaction.user, EntityType.USER, Flag.ALLOW_PINGS
                 )
+                metrics.PINGME_OPTED_OUT.inc()
                 await interaction.response.send_message(
                     "I will no longer ping you for messages which"
                     " mention you. If you decide to opt back in,"
@@ -73,6 +74,7 @@ class InteractionCog(commands.Cog):
                 await flags.set_flag(
                     self.bot.db, interaction.user, EntityType.USER, Flag.ALLOW_PINGS
                 )
+                metrics.PINGME_OPTED_IN.inc()
                 await interaction.response.send_message(
                     "I will now ping you for messages which mention"
                     " you. If you change your mind, run"
@@ -81,6 +83,7 @@ class InteractionCog(commands.Cog):
                 )
 
         except Exception:
+            metrics.PINGME_ERRORS.inc()
             logger.exception(
                 "An exception occurred while attempting to execute"
                 " slash command responder for command 'pingme'."

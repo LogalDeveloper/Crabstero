@@ -62,6 +62,38 @@ class TestParseArgs:
         args = _parse_args(["--token", "test", "--ingest-only"])
         assert args.ingest_only is True
 
+    def test_listen_metrics_parses_address(self) -> None:
+        """--listen-metrics HOST:PORT sets listen_metrics to (host, port)."""
+        args = _parse_args(["--token", "test", "--listen-metrics", "127.0.0.1:9090"])
+        assert args.listen_metrics == ("127.0.0.1", 9090)
+
+    def test_listen_metrics_default_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Omitting --listen-metrics defaults to None."""
+        monkeypatch.delenv("LISTEN_METRICS", raising=False)
+        args = _parse_args(["--token", "test"])
+        assert args.listen_metrics is None
+
+    def test_listen_metrics_ipv6(self) -> None:
+        """--listen-metrics [::1]:PORT parses IPv6 address correctly."""
+        args = _parse_args(["--token", "test", "--listen-metrics", "[::1]:9090"])
+        assert args.listen_metrics == ("[::1]", 9090)
+
+    def test_listen_metrics_from_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """LISTEN_METRICS env var is used when --listen-metrics is omitted."""
+        monkeypatch.setenv("LISTEN_METRICS", "127.0.0.1:8080")
+        args = _parse_args(["--token", "test"])
+        assert args.listen_metrics == ("127.0.0.1", 8080)
+
+    def test_listen_metrics_invalid_format(self) -> None:
+        """--listen-metrics with no colon raises SystemExit."""
+        with pytest.raises(SystemExit):
+            _parse_args(["--token", "test", "--listen-metrics", "bad"])
+
+    def test_listen_metrics_invalid_port(self) -> None:
+        """--listen-metrics with non-integer port raises SystemExit."""
+        with pytest.raises(SystemExit):
+            _parse_args(["--token", "test", "--listen-metrics", "127.0.0.1:abc"])
+
     def test_missing_token_exits(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Missing token causes SystemExit."""
         monkeypatch.delenv("TOKEN", raising=False)

@@ -22,6 +22,8 @@ LIMIT 1 naturally preserves this weighting.
 import re
 from typing import TYPE_CHECKING
 
+from crabstero import metrics
+
 if TYPE_CHECKING:
     from crabstero.database import Database
 
@@ -106,46 +108,49 @@ async def generate(
     :param hard_limit: Character count to hard-cut the sentence at.
     :return: A new generated sentence.
     """
-    word = await db.get_random_start_word(channel_id)
+    with metrics.GENERATION_DURATION.time():
+        word = await db.get_random_start_word(channel_id)
 
-    # Seed the chain with a fallback sentence if the channel has no data yet.
-    if word is None:
-        await _ingest_sentence(db, channel_id, 0, "Hello world!")
-        word = "Hello"  # Known start word from the fallback sentence above.
+        # Seed the chain with a fallback sentence if the channel has no data yet.
+        if word is None:
+            await _ingest_sentence(db, channel_id, 0, "Hello world!")
+            word = "Hello"  # Known start word from the fallback sentence above.
 
-    parts: list[str] = []
-    parts.append(word)
-    current_length = len(word)
-
-    # The loop is skipped if the starting word already ends a sentence (e.g. "Yes.").
-    while not is_complete_sentence(word):
-        # Past the soft limit, prefer a sentence-ending word to wrap up.
-        if current_length >= soft_limit:
-            next_word = await db.get_random_completing_next_word(channel_id, word)
-            if next_word is None:
-                next_word = await db.get_random_next_word(channel_id, word)
-        else:
-            next_word = await db.get_random_next_word(channel_id, word)
-
-        if next_word is None:
-            break
-
-        word = next_word
-
+        parts: list[str] = []
         parts.append(word)
-        current_length += 1 + len(word)  # +1 for the joining space.
+        current_length = len(word)
 
-        if current_length >= hard_limit:
-            result = " ".join(parts)[:hard_limit]
-            # Strip the internal sentence-end marker if it ended up at the boundary.
-            if result and result[-1] == DEFAULT_SENTENCE_END:
-                return result[:-1]
-            return result
+        # The loop is skipped if the start word already ends a sentence (e.g. "Yes.").
+        while not is_complete_sentence(word):
+            # Past the soft limit, prefer a sentence-ending word to wrap up.
+            if current_length >= soft_limit:
+                next_word = await db.get_random_completing_next_word(channel_id, word)
+                if next_word is None:
+                    next_word = await db.get_random_next_word(channel_id, word)
+            else:
+                next_word = await db.get_random_next_word(channel_id, word)
 
-    result = " ".join(parts)
+            if next_word is None:
+                break
 
-    # Strip the internal sentence-end marker so it never appears in output.
-    if result and result[-1] == DEFAULT_SENTENCE_END:
-        return result[:-1]
+            word = next_word
 
-    return result
+            parts.append(word)
+            current_length += 1 + len(word)  # +1 for the joining space.
+
+            if current_length >= hard_limit:
+                result = " ".join(parts)[:hard_limit]
+                # Strip the internal sentence-end marker if it ended up at the boundary.
+                if result and result[-1] == DEFAULT_SENTENCE_END:
+                    result = result[:-1]
+                metrics.GENERATED_MESSAGE_LENGTH.observe(len(result))
+                return result
+
+        result = " ".join(parts)
+
+        # Strip the internal sentence-end marker so it never appears in output.
+        if result and result[-1] == DEFAULT_SENTENCE_END:
+            result = result[:-1]
+
+        metrics.GENERATED_MESSAGE_LENGTH.observe(len(result))
+        return result

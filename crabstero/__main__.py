@@ -100,8 +100,28 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             " never respond."
         ),
     )
+    parser.add_argument(
+        "--listen-metrics",
+        default=os.environ.get("LISTEN_METRICS"),
+        help=(
+            "Enable Prometheus metrics endpoint on HOST:PORT"
+            " (e.g. 127.0.0.1:9090). Disabled by default."
+            " (default: LISTEN_METRICS environment variable)."
+        ),
+    )
 
     args = parser.parse_args(argv)
+
+    if args.listen_metrics is not None:
+        host, sep, port_str = args.listen_metrics.rpartition(":")
+        if not sep or not host:
+            parser.error(
+                "--listen-metrics must be in HOST:PORT format (e.g. 127.0.0.1:9090)"
+            )
+        try:
+            args.listen_metrics = (host, int(port_str))
+        except ValueError:
+            parser.error(f"--listen-metrics port must be an integer, got '{port_str}'")
 
     if args.token is None:
         parser.error(
@@ -129,6 +149,7 @@ def main() -> None:
         database_path=args.database_path,
         ingestion_workers=args.ingestion_workers,
         ingest_only=args.ingest_only,
+        metrics_address=args.listen_metrics,
     )
 
     async def _run() -> None:

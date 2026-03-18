@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING
 
 import discord
 
+from crabstero import metrics
 from crabstero.messages import ingest_message
 
 if TYPE_CHECKING:
@@ -74,18 +75,23 @@ async def ingest_channel(
 
         logger.info("[%s] Starting ingestion of textable channel history.", channel.id)
 
-        count = 0
-        async for message in channel.history(limit=MAXIMUM_MESSAGES_PER_CHANNEL):
-            count += 1
-            await ingest_message(db, message)
+        with metrics.CHANNEL_INGESTION_DURATION.time():
+            count = 0
+            async for message in channel.history(limit=MAXIMUM_MESSAGES_PER_CHANNEL):
+                count += 1
+                await ingest_message(db, message)
+
+        metrics.CHANNEL_INGESTION_MESSAGES.observe(count)
 
         logger.info(
             "[%s] Ingestion of channel history complete. %d messages ingested.",
             channel.id,
             count,
         )
+        metrics.CHANNELS_INGESTED.inc()
 
     except Exception:
+        metrics.CHANNEL_INGESTION_ERRORS.inc()
         logger.exception(
             "[%s] An error occurred while ingesting textable channel history!",
             channel.id,

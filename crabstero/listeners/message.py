@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING
 import discord
 from discord.ext import commands
 
+from crabstero import metrics
 from crabstero.messages import ingest_message, reply_to_message
 
 if TYPE_CHECKING:
@@ -54,6 +55,8 @@ class MessageCog(commands.Cog):
 
         if message.author.bot or message.author == self.bot.user:
             return
+
+        metrics.MESSAGES_PROCESSED.inc()
 
         if self.bot._ingest_only:
             # In ingest-only mode, never reply — only ingest eligible messages.

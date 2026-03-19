@@ -170,9 +170,13 @@ class TestGenerate:
     """Markov chain text generation."""
 
     async def test_fallback_on_empty_channel(self, db: Database) -> None:
-        """Returns 'Hello world!' when the channel has no data."""
+        """Returns an informational message when the channel has no data."""
         result = await generate(db, 1)
-        assert result == "Hello world!"
+        expected = (
+            "There's not enough data to generate a message yet."
+            " Chat a bit more so I can learn how this channel talks!"
+        )
+        assert result == expected
 
     async def test_generates_from_ingested_data(self, db: Database) -> None:
         """Generated text uses words from ingested data."""
@@ -278,4 +282,8 @@ class TestGenerate:
 
         # Channel 3 has no data; should get the fallback.
         result = await generate(db, 3)
-        assert result == "Hello world!"
+        expected = (
+            "There's not enough data to generate a message yet."
+            " Chat a bit more so I can learn how this channel talks!"
+        )
+        assert result == expected

@@ -111,10 +111,11 @@ async def generate(
     with metrics.GENERATION_DURATION.time():
         word = await db.get_random_start_word(channel_id)
 
-        # Seed the chain with a fallback sentence if the channel has no data yet.
         if word is None:
-            await _ingest_sentence(db, channel_id, 0, "Hello world!")
-            word = "Hello"  # Known start word from the fallback sentence above.
+            return (
+                "There's not enough data to generate a message yet."
+                " Chat a bit more so I can learn how this channel talks!"
+            )
 
         parts: list[str] = []
         parts.append(word)

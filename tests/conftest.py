@@ -21,12 +21,12 @@ import pytest
 from crabstero.database import Database
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
+    from collections.abc import AsyncGenerator
     from pathlib import Path
 
 
 @pytest.fixture
-async def db(tmp_path: Path) -> AsyncIterator[Database]:
+async def db(tmp_path: Path) -> AsyncGenerator[Database]:
     """Yield a Database backed by a temporary SQLite file."""
     database = await Database.connect(str(tmp_path / "test.db"))
     yield database

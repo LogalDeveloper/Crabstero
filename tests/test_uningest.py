@@ -55,7 +55,7 @@ class TestIngestUningestCycle:
 
         assert await db.get_random_image(1) is None
 
-    async def test_cache_round_trip(self) -> None:
+    def test_cache_round_trip(self) -> None:
         """Cache put then pop returns the original entry."""
         cache = IngestCache()
         entry = CachedMessage(

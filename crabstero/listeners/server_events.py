@@ -62,13 +62,13 @@ class ServerEventsCog(commands.Cog):
             value=f"{guild.member_count} members",
         )
 
-        if guild.icon:
+        if guild.icon is not None:
             embed.set_image(url=guild.icon.url)
 
         embed.set_footer(text=f"{len(self.bot.guilds)} total servers")
 
         app_info = await self.bot.application_info()
-        if app_info.owner:
+        if app_info.owner is not None:
             with contextlib.suppress(discord.HTTPException):
                 await app_info.owner.send(embed=embed)
 

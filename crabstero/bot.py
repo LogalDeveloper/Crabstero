@@ -30,6 +30,7 @@ from crabstero.cache import IngestCache
 from crabstero.database import Database
 from crabstero.listeners import interaction, message, server_events
 from crabstero.metrics import (
+    CHANNEL_INGESTION_ERRORS,
     DISCORD_EVENTS,
     DISCORD_LATENCY,
     GUILD_COUNT,
@@ -83,10 +84,11 @@ class Crabstero(commands.Bot):
             discord.TextChannel | discord.VoiceChannel
         ] = asyncio.Queue()
         self._ingestion_workers: list[asyncio.Task[None]] = []
-        self.db: Database
+        self._db: Database | None = None
         self.ingest_cache = IngestCache()
 
         self._metrics_address = metrics_address
+        self._metrics_server: MetricsServer | None = None
 
         DISCORD_LATENCY.set_function(lambda: self.latency)
         GUILD_COUNT.set_function(lambda: len(self.guilds))
@@ -95,15 +97,31 @@ class Crabstero(commands.Bot):
         repo_url = "https://git.logal.dev/LogalDeveloper/Crabstero"
         self.http.user_agent = f"DiscordBot ({repo_url}, {crabstero_version})"
 
+    @property
+    def db(self) -> Database:
+        """The active database connection.
+
+        :raises RuntimeError: If accessed before :meth:`setup_hook` has run.
+        """
+        if self._db is None:
+            raise RuntimeError("Database is not initialized")
+        return self._db
+
+    @property
+    def ingest_only(self) -> bool:
+        """Whether the bot is running in ingest-only mode."""
+        return self._ingest_only
+
     async def setup_hook(self) -> None:
         """Open the database, start ingestion workers, and load all cogs."""
-        self.db = await Database.connect(self._database_path)
+        self._db = await Database.connect(self._database_path)
         self.ingest_cache.start()
         self._start_ingestion_workers()
 
         if self._metrics_address is not None:
-            self._metrics_server = MetricsServer(*self._metrics_address)
-            await self._metrics_server.start()
+            server = MetricsServer(*self._metrics_address)
+            await server.start()
+            self._metrics_server = server
 
         if not self._ingest_only:
             await interaction.setup(self)
@@ -143,13 +161,9 @@ class Crabstero(commands.Bot):
         """Log that the bot has started successfully."""
         logger.info("Crabstero started!")
 
-    async def start(self, token: str = "", *, reconnect: bool = True) -> None:
-        """Start the bot using the stored token by default.
-
-        :param token: Optional token override. Falls back to the stored token if empty.
-        :param reconnect: Whether to automatically reconnect on disconnect.
-        """
-        await super().start(token or self._token, reconnect=reconnect)
+    async def start(self, **kwargs: object) -> None:
+        """Start the bot using the token provided at initialization."""
+        await super().start(self._token, **kwargs)
 
     async def close(self) -> None:
         """Cancel ingestion workers, close the database, and then the bot connection."""
@@ -161,10 +175,10 @@ class Crabstero(commands.Bot):
         await asyncio.gather(*self._ingestion_workers, return_exceptions=True)
         self._ingestion_workers.clear()
         self.ingest_cache.stop()
-        if hasattr(self, "_metrics_server"):
+        if self._metrics_server is not None:
             await self._metrics_server.stop()
-        if hasattr(self, "db"):
-            await self.db.close()
+        if self._db is not None:
+            await self._db.close()
         await super().close()
 
     def queue_channel_for_ingestion(
@@ -188,5 +202,8 @@ class Crabstero(commands.Bot):
             channel = await self._ingestion_queue.get()
             try:
                 await ingest_channel(channel, self.db)
+            except Exception:
+                CHANNEL_INGESTION_ERRORS.inc()
+                logger.exception("Ingestion failed for channel %s", channel.id)
             finally:
                 self._ingestion_queue.task_done()

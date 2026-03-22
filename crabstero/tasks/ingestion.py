@@ -59,40 +59,32 @@ async def ingest_channel(
     :param channel: The channel to ingest.
     :param db: The database instance.
     """
-    try:
-        if not channel.permissions_for(channel.guild.me).read_message_history:
-            logger.warning(
-                "[%s] Unable to ingest channel history"
-                " due to lacking permissions. Ignoring.",
-                channel.id,
-            )
-            return
-
-        if await db.is_channel_ingested(channel.id):
-            return
-
-        await db.mark_channel_ingested(channel.id)
-
-        logger.info("[%s] Starting ingestion of textable channel history.", channel.id)
-
-        with metrics.CHANNEL_INGESTION_DURATION.time():
-            count = 0
-            async for message in channel.history(limit=MAXIMUM_MESSAGES_PER_CHANNEL):
-                count += 1
-                await ingest_message(db, message)
-
-        metrics.CHANNEL_INGESTION_MESSAGES.observe(count)
-
-        logger.info(
-            "[%s] Ingestion of channel history complete. %d messages ingested.",
-            channel.id,
-            count,
-        )
-        metrics.CHANNELS_INGESTED.inc()
-
-    except Exception:
-        metrics.CHANNEL_INGESTION_ERRORS.inc()
-        logger.exception(
-            "[%s] An error occurred while ingesting textable channel history!",
+    if not channel.permissions_for(channel.guild.me).read_message_history:
+        logger.warning(
+            "[%s] Unable to ingest channel history"
+            " due to lacking permissions. Ignoring.",
             channel.id,
         )
+        return
+
+    if await db.is_channel_ingested(channel.id):
+        return
+
+    await db.mark_channel_ingested(channel.id)
+
+    logger.info("[%s] Starting ingestion of textable channel history.", channel.id)
+
+    with metrics.CHANNEL_INGESTION_DURATION.time():
+        count = 0
+        async for message in channel.history(limit=MAXIMUM_MESSAGES_PER_CHANNEL):
+            count += 1
+            await ingest_message(db, message)
+
+    metrics.CHANNEL_INGESTION_MESSAGES.observe(count)
+
+    logger.info(
+        "[%s] Ingestion of channel history complete. %d messages ingested.",
+        channel.id,
+        count,
+    )
+    metrics.CHANNELS_INGESTED.inc()

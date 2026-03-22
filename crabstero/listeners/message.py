@@ -58,7 +58,7 @@ class MessageCog(commands.Cog):
 
         metrics.MESSAGES_PROCESSED.inc()
 
-        if self.bot._ingest_only:
+        if self.bot.ingest_only:
             # In ingest-only mode, never reply — only ingest eligible messages.
             if message.type == discord.MessageType.default and not isinstance(
                 channel, discord.Thread

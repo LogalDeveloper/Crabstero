@@ -66,7 +66,7 @@ async def reply_to_message(db: Database, message: discord.Message) -> None:
     else:
         channel_id = channel.id
 
-    body = await markov.generate(db, channel_id, 750, 1000)
+    body = await markov.generate(db, channel_id)
 
     embed = None
 
@@ -76,8 +76,10 @@ async def reply_to_message(db: Database, message: discord.Message) -> None:
         and channel.permissions_for(guild.me).embed_links
     ):
         embed = discord.Embed(
-            title=await markov.generate(db, channel_id, 200, 300),
-            description=await markov.generate(db, channel_id, 300, 500),
+            title=await markov.generate(db, channel_id, soft_limit=200, hard_limit=300),
+            description=await markov.generate(
+                db, channel_id, soft_limit=300, hard_limit=500
+            ),
         )
 
         random_image = await db.get_random_image(channel_id)

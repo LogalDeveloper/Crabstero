@@ -47,7 +47,7 @@ class InteractionCog(commands.Cog):
         name="pingme",
         description=(
             "Opts into (or back out of) receiving pings"
-            " for generated message which mention you."
+            " for generated messages which mention you."
         ),
     )
     async def pingme(self, interaction: discord.Interaction) -> None:

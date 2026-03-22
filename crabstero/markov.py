@@ -19,6 +19,7 @@ to represent frequency weight. Random selection via ORDER BY RANDOM()
 LIMIT 1 naturally preserves this weighting.
 """
 
+import itertools
 import re
 from typing import TYPE_CHECKING
 
@@ -30,6 +31,19 @@ if TYPE_CHECKING:
 # Section sign (§), used internally to mark the end of sentences that lack punctuation,
 # as is common on Discord.
 DEFAULT_SENTENCE_END = "\u00a7"
+
+_TERMINATORS = frozenset({DEFAULT_SENTENCE_END, ".", "!", "?"})
+_MULTI_SPACE = re.compile(r" +")
+_SENTENCE_SPLIT = re.compile(r"(?<=[.!?]) ")
+
+
+def _normalize_whitespace(text: str) -> str:
+    """Collapse runs of spaces into single spaces and strip edges.
+
+    :param text: The raw text to normalize.
+    :return: The normalized text.
+    """
+    return _MULTI_SPACE.sub(" ", text.strip())
 
 
 def is_complete_sentence(sentence: str) -> bool:
@@ -44,7 +58,7 @@ def is_complete_sentence(sentence: str) -> bool:
     if not sentence:
         return False
 
-    return sentence[-1] in (DEFAULT_SENTENCE_END, ".", "!", "?")
+    return sentence[-1] in _TERMINATORS
 
 
 def _split_sentences(paragraph: str) -> list[str]:
@@ -55,8 +69,8 @@ def _split_sentences(paragraph: str) -> list[str]:
     """
     if not is_complete_sentence(paragraph):
         paragraph += DEFAULT_SENTENCE_END
-    normalized = re.sub(r" +", " ", paragraph.strip().replace("\n", " "))
-    return re.split(r"(?<=[.!?]) ", normalized)
+    normalized = _normalize_whitespace(paragraph.replace("\n", " "))
+    return _SENTENCE_SPLIT.split(normalized)
 
 
 def _tokenize_sentence(
@@ -69,14 +83,10 @@ def _tokenize_sentence(
     """
     if not is_complete_sentence(sentence):
         sentence += DEFAULT_SENTENCE_END
-    words = re.sub(r" +", " ", sentence.strip()).split(" ")
+    words = _normalize_whitespace(sentence).split()
 
-    start_words: list[str] = []
-    transitions: list[tuple[str, str]] = []
-    for i in range(len(words) - 1):
-        if i == 0:
-            start_words.append(words[i])
-        transitions.append((words[i], words[i + 1]))
+    start_words: list[str] = [words[0]] if len(words) >= 2 else []
+    transitions: list[tuple[str, str]] = list(itertools.pairwise(words))
     return start_words, transitions
 
 
@@ -162,8 +172,7 @@ async def generate(
                 " Chat a bit more so I can learn how this channel talks!"
             )
 
-        parts: list[str] = []
-        parts.append(word)
+        parts: list[str] = [word]
         current_length = len(word)
 
         # The loop is skipped if the start word already ends a sentence (e.g. "Yes.").
@@ -185,17 +194,14 @@ async def generate(
             current_length += 1 + len(word)  # +1 for the joining space.
 
             if current_length >= hard_limit:
-                result = " ".join(parts)[:hard_limit]
-                # Strip the internal sentence-end marker if it ended up at the boundary.
-                if result and result[-1] == DEFAULT_SENTENCE_END:
-                    result = result[:-1]
-                metrics.GENERATED_MESSAGE_LENGTH.observe(len(result))
-                return result
+                break
 
         result = " ".join(parts)
+        if current_length >= hard_limit:
+            result = result[:hard_limit]
 
         # Strip the internal sentence-end marker so it never appears in output.
-        if result and result[-1] == DEFAULT_SENTENCE_END:
+        if result.endswith(DEFAULT_SENTENCE_END):
             result = result[:-1]
 
         metrics.GENERATED_MESSAGE_LENGTH.observe(len(result))

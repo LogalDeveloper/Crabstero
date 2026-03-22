@@ -80,10 +80,20 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             ' variable or "crabstero.db").'
         ),
     )
+    workers_env = os.environ.get("INGESTION_WORKERS", "4")
+    try:
+        workers_default = int(workers_env)
+    except ValueError:
+        logger.warning(
+            "Invalid INGESTION_WORKERS value '%s', defaulting to 4.",
+            workers_env,
+        )
+        workers_default = 4
+
     parser.add_argument(
         "--ingestion-workers",
         type=int,
-        default=int(os.environ.get("INGESTION_WORKERS", "4")),
+        default=workers_default,
         help=(
             "Number of concurrent ingestion workers"
             " (default: INGESTION_WORKERS environment"

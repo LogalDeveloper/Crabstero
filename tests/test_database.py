@@ -127,7 +127,7 @@ class TestImages:
 
     async def test_add_and_retrieve(self, db: Database) -> None:
         """Inserted image URL can be retrieved by channel."""
-        await db.add_image(1, 100, "https://example.com/cat.png")
+        await db.add_images([(1, 100, "https://example.com/cat.png")])
         result = await db.get_random_image(1)
         assert result == "https://example.com/cat.png"
 
@@ -179,6 +179,103 @@ class TestChannelIngestion:
         await db.mark_channel_ingested(42)
         await db.mark_channel_ingested(42)
         assert await db.is_channel_ingested(42) is True
+
+
+class TestRemoveMarkovData:
+    """Markov data removal via remove_markov_data."""
+
+    async def test_removes_one_start_word(self, db: Database) -> None:
+        """Removes exactly one matching start word row."""
+        await db.add_markov_data([(1, 100, "Hello"), (1, 100, "Hello")], [])
+        await db.remove_markov_data([(1, 100, "Hello")], [])
+        # One copy should remain.
+        assert await db.get_random_start_word(1) == "Hello"
+
+    async def test_removes_one_transition(self, db: Database) -> None:
+        """Removes exactly one matching transition row."""
+        await db.add_markov_data(
+            [], [(1, 100, "Hello", "world."), (1, 100, "Hello", "world.")]
+        )
+        await db.remove_markov_data([], [(1, 100, "Hello", "world.")])
+        assert await db.get_random_next_word(1, "Hello") == "world."
+
+    async def test_removes_last_start_word(self, db: Database) -> None:
+        """Removing the only start word leaves the table empty for that channel."""
+        await db.add_markov_data([(1, 100, "Hello")], [])
+        await db.remove_markov_data([(1, 100, "Hello")], [])
+        assert await db.get_random_start_word(1) is None
+
+    async def test_removes_last_transition(self, db: Database) -> None:
+        """Removing the only transition leaves no next word."""
+        await db.add_markov_data([], [(1, 100, "Hello", "world.")])
+        await db.remove_markov_data([], [(1, 100, "Hello", "world.")])
+        assert await db.get_random_next_word(1, "Hello") is None
+
+    async def test_no_match_is_noop(self, db: Database) -> None:
+        """Removing a non-existent row does not raise."""
+        await db.remove_markov_data([(1, 100, "nope")], [(1, 100, "nope", "nah")])
+
+    async def test_start_word_removal_scoped_to_channel(self, db: Database) -> None:
+        """Removing a start word in one channel leaves another channel intact."""
+        await db.add_markov_data([(1, 100, "Hello"), (2, 200, "Hello")], [])
+        await db.remove_markov_data([(1, 100, "Hello")], [])
+        assert await db.get_random_start_word(1) is None
+        assert await db.get_random_start_word(2) == "Hello"
+
+    async def test_transition_removal_scoped_to_channel(self, db: Database) -> None:
+        """Removing a transition in one channel leaves another channel intact."""
+        await db.add_markov_data(
+            [], [(1, 100, "Hello", "world."), (2, 200, "Hello", "world.")]
+        )
+        await db.remove_markov_data([], [(1, 100, "Hello", "world.")])
+        assert await db.get_random_next_word(1, "Hello") is None
+        assert await db.get_random_next_word(2, "Hello") == "world."
+
+    async def test_empty_lists_is_noop(self, db: Database) -> None:
+        """Empty lists do not error."""
+        await db.remove_markov_data([], [])
+
+
+class TestRemoveImages:
+    """Image removal via remove_images."""
+
+    async def test_removes_one_image(self, db: Database) -> None:
+        """Removes exactly one matching image row."""
+        await db.add_images(
+            [
+                (1, 100, "https://example.com/a.png"),
+                (1, 100, "https://example.com/a.png"),
+            ]
+        )
+        await db.remove_images([(1, 100, "https://example.com/a.png")])
+        # One copy should remain.
+        assert await db.get_random_image(1) == "https://example.com/a.png"
+
+    async def test_removes_last_image(self, db: Database) -> None:
+        """Removing the only image leaves none for that channel."""
+        await db.add_images([(1, 100, "https://example.com/a.png")])
+        await db.remove_images([(1, 100, "https://example.com/a.png")])
+        assert await db.get_random_image(1) is None
+
+    async def test_image_removal_scoped_to_channel(self, db: Database) -> None:
+        """Removing an image in one channel leaves another channel intact."""
+        await db.add_images(
+            [
+                (1, 100, "https://example.com/a.png"),
+                (2, 200, "https://example.com/a.png"),
+            ]
+        )
+        await db.remove_images([(1, 100, "https://example.com/a.png")])
+        assert await db.get_random_image(1) is None
+        assert await db.get_random_image(2) == "https://example.com/a.png"
+
+    async def test_no_match_is_noop(self, db: Database) -> None:
+        """Removing a non-existent image does not raise."""
+        await db.remove_images([(1, 100, "https://example.com/nope.png")])
+
+    async def test_empty_list_is_noop(self, db: Database) -> None:
+        """Empty list does not error."""
+        await db.remove_images([])
 
 
 class TestWriteDurability:

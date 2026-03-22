@@ -134,6 +134,42 @@ class Database:
         if start_words or transitions:
             await self._connection.commit()
 
+    async def remove_markov_data(
+        self,
+        start_words: list[tuple[int, int, str]],
+        transitions: list[tuple[int, int, str, str]],
+    ) -> None:
+        """Remove one matching row per entry from the Markov tables.
+
+        Each entry removes at most one duplicate row, preserving remaining
+        frequency weight.
+
+        :param start_words: A list of (channel_id, user_id, word) tuples.
+        :param transitions: A list of (channel_id, user_id, word, next_word) tuples.
+        """
+        for channel_id, user_id, word in start_words:
+            await self._connection.execute(
+                "DELETE FROM markov_start_words"
+                " WHERE rowid = ("
+                "   SELECT rowid FROM markov_start_words"
+                "   WHERE channel_id = ? AND user_id = ? AND word = ?"
+                "   LIMIT 1"
+                " )",
+                (channel_id, user_id, word),
+            )
+        for channel_id, user_id, word, next_word in transitions:
+            await self._connection.execute(
+                "DELETE FROM markov_transitions"
+                " WHERE rowid = ("
+                "   SELECT rowid FROM markov_transitions"
+                "   WHERE channel_id = ? AND user_id = ? AND word = ? AND next_word = ?"
+                "   LIMIT 1"
+                " )",
+                (channel_id, user_id, word, next_word),
+            )
+        if start_words or transitions:
+            await self._connection.commit()
+
     async def get_random_start_word(self, channel_id: int) -> str | None:
         """Return a random starting word for a channel.
 
@@ -192,18 +228,40 @@ class Database:
             row = await cursor.fetchone()
             return row[0] if row else None
 
-    async def add_image(self, channel_id: int, user_id: int, url: str) -> None:
-        """Store an image URL for a given channel.
+    async def add_images(self, images: list[tuple[int, int, str]]) -> None:
+        """Store image URLs for a given channel.
 
-        :param channel_id: The Discord channel ID.
-        :param user_id: The Discord user ID of the contributor.
-        :param url: The image URL to store.
+        :param images: A list of (channel_id, user_id, url) tuples.
         """
-        await self._connection.execute(
-            "INSERT INTO channel_images (channel_id, user_id, url) VALUES (?, ?, ?)",
-            (channel_id, user_id, url),
-        )
-        await self._connection.commit()
+        if images:
+            await self._connection.executemany(
+                "INSERT INTO channel_images"
+                " (channel_id, user_id, url)"
+                " VALUES (?, ?, ?)",
+                images,
+            )
+            await self._connection.commit()
+
+    async def remove_images(self, images: list[tuple[int, int, str]]) -> None:
+        """Remove one matching row per entry from the images table.
+
+        Each entry removes at most one duplicate row, preserving remaining
+        frequency weight.
+
+        :param images: A list of (channel_id, user_id, url) tuples.
+        """
+        for channel_id, user_id, url in images:
+            await self._connection.execute(
+                "DELETE FROM channel_images"
+                " WHERE rowid = ("
+                "   SELECT rowid FROM channel_images"
+                "   WHERE channel_id = ? AND user_id = ? AND url = ?"
+                "   LIMIT 1"
+                " )",
+                (channel_id, user_id, url),
+            )
+        if images:
+            await self._connection.commit()
 
     async def get_random_image(self, channel_id: int) -> str | None:
         """Return a random image URL for a given channel.

@@ -72,6 +72,9 @@ class TestMetricObjects:
                 "crabstero_channel_ingestion_messages", id="channel-ingestion-messages"
             ),
             pytest.param("crabstero_discord_events_total", id="discord-events"),
+            pytest.param(
+                "crabstero_messages_uningested_total", id="messages-uningested"
+            ),
         ],
     )
     def test_metric_in_output(self, name: str) -> None:

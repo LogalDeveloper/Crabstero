@@ -26,6 +26,7 @@ from typing import TYPE_CHECKING
 import discord
 
 from crabstero import flags, markov, metrics
+from crabstero.cache import CachedMessage, IngestCache
 from crabstero.flags import EntityType, Flag
 
 if TYPE_CHECKING:
@@ -115,11 +116,18 @@ async def reply_to_message(db: Database, message: discord.Message) -> None:
     metrics.REPLIES_SENT.inc()
 
 
-async def ingest_message(db: Database, message: discord.Message) -> None:
+async def ingest_message(
+    db: Database, message: discord.Message, cache: IngestCache | None = None
+) -> None:
     """Ingest a given message into its channel's Markov chain.
+
+    If a cache is provided, the ingested data is recorded so it can be
+    reversed by :func:`uningest_message` if the message is deleted shortly
+    after.
 
     :param db: The database instance.
     :param message: The message to ingest.
+    :param cache: Optional ingest cache for tracking recently ingested data.
     """
     guild = message.guild
     if guild is None:
@@ -141,31 +149,64 @@ async def ingest_message(db: Database, message: discord.Message) -> None:
     if not message.content and not message.embeds:
         return
 
+    embed_texts: list[str] = []
+    image_urls: list[str] = []
+
     with metrics.MESSAGE_INGESTION_DURATION.time():
         if message.content:
             await markov.ingest(db, channel_id, user_id, message.content)
 
         for embed in message.embeds:
-            await _ingest_embed(db, channel_id, user_id, embed)
+            if embed.title:
+                embed_texts.append(embed.title)
+                await markov.ingest(db, channel_id, user_id, embed.title)
+            if embed.description:
+                embed_texts.append(embed.description)
+                await markov.ingest(db, channel_id, user_id, embed.description)
+            if embed.image and embed.image.url:
+                image_urls.append(embed.image.url)
+
+        if image_urls:
+            await db.add_images([(channel_id, user_id, url) for url in image_urls])
 
     metrics.MESSAGES_INGESTED.inc()
 
+    if cache is not None:
+        cache.put(
+            message.id,
+            CachedMessage(
+                channel_id=channel_id,
+                user_id=user_id,
+                content=message.content or None,
+                embed_texts=embed_texts,
+                image_urls=image_urls,
+            ),
+        )
 
-async def _ingest_embed(
-    db: Database, channel_id: int, user_id: int, embed: discord.Embed
-) -> None:
-    """Ingest a given embed into a given channel's Markov chain.
+
+async def uningest_message(db: Database, cache: IngestCache, message_id: int) -> None:
+    """Reverse ingestion for a recently deleted message.
+
+    Looks up the message in the cache. If found, removes all Markov data
+    and images that were added during ingestion.
 
     :param db: The database instance.
-    :param channel_id: The ID of the channel to use for the Markov chain.
-    :param user_id: The Discord user ID of the contributor.
-    :param embed: The embed to ingest.
+    :param cache: The ingest cache.
+    :param message_id: The Discord message ID that was deleted.
     """
-    if embed.title:
-        await markov.ingest(db, channel_id, user_id, embed.title)
+    entry = cache.pop(message_id)
+    if entry is None:
+        return
 
-    if embed.description:
-        await markov.ingest(db, channel_id, user_id, embed.description)
+    if entry.content:
+        await markov.uningest(db, entry.channel_id, entry.user_id, entry.content)
 
-    if embed.image and embed.image.url:
-        await db.add_image(channel_id, user_id, embed.image.url)
+    for text in entry.embed_texts:
+        await markov.uningest(db, entry.channel_id, entry.user_id, text)
+
+    if entry.image_urls:
+        await db.remove_images(
+            [(entry.channel_id, entry.user_id, url) for url in entry.image_urls]
+        )
+
+    metrics.MESSAGES_UNINGESTED.inc()

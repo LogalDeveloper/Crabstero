@@ -12,10 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Handles created messages.
+"""Handles message creation and deletion events.
 
-Responds to mentions and ingests normal text messages as a Cog with an
-on_message listener.
+Responds to mentions, ingests normal text messages, and reverses
+ingestion when messages are deleted.
 """
 
 from typing import TYPE_CHECKING
@@ -24,7 +24,7 @@ import discord
 from discord.ext import commands
 
 from crabstero import metrics
-from crabstero.messages import ingest_message, reply_to_message
+from crabstero.messages import ingest_message, reply_to_message, uningest_message
 
 if TYPE_CHECKING:
     from crabstero.bot import Crabstero
@@ -63,7 +63,7 @@ class MessageCog(commands.Cog):
             if message.type == discord.MessageType.default and not isinstance(
                 channel, discord.Thread
             ):
-                await ingest_message(self.bot.db, message)
+                await ingest_message(self.bot.db, message, self.bot.ingest_cache)
             return
 
         if self.bot.user in message.mentions:
@@ -74,7 +74,28 @@ class MessageCog(commands.Cog):
         if message.type == discord.MessageType.default and not isinstance(
             channel, discord.Thread
         ):
-            await ingest_message(self.bot.db, message)
+            await ingest_message(self.bot.db, message, self.bot.ingest_cache)
+
+    @commands.Cog.listener()
+    async def on_raw_message_delete(
+        self, payload: discord.RawMessageDeleteEvent
+    ) -> None:
+        """Uningest a recently ingested message when it is deleted.
+
+        :param payload: The raw message delete event.
+        """
+        await uningest_message(self.bot.db, self.bot.ingest_cache, payload.message_id)
+
+    @commands.Cog.listener()
+    async def on_raw_bulk_message_delete(
+        self, payload: discord.RawBulkMessageDeleteEvent
+    ) -> None:
+        """Uningest recently ingested messages when they are bulk-deleted.
+
+        :param payload: The raw bulk message delete event.
+        """
+        for message_id in payload.message_ids:
+            await uningest_message(self.bot.db, self.bot.ingest_cache, message_id)
 
 
 async def setup(bot: Crabstero) -> None:

@@ -26,6 +26,7 @@ from discord import app_commands
 from discord.ext import commands
 
 from crabstero import __version__ as crabstero_version
+from crabstero.cache import IngestCache
 from crabstero.database import Database
 from crabstero.listeners import interaction, message, server_events
 from crabstero.metrics import (
@@ -83,6 +84,7 @@ class Crabstero(commands.Bot):
         ] = asyncio.Queue()
         self._ingestion_workers: list[asyncio.Task[None]] = []
         self.db: Database
+        self.ingest_cache = IngestCache()
 
         self._metrics_address = metrics_address
 
@@ -96,6 +98,7 @@ class Crabstero(commands.Bot):
     async def setup_hook(self) -> None:
         """Open the database, start ingestion workers, and load all cogs."""
         self.db = await Database.connect(self._database_path)
+        self.ingest_cache.start()
         self._start_ingestion_workers()
 
         if self._metrics_address is not None:
@@ -157,6 +160,7 @@ class Crabstero(commands.Bot):
             worker.cancel()
         await asyncio.gather(*self._ingestion_workers, return_exceptions=True)
         self._ingestion_workers.clear()
+        self.ingest_cache.stop()
         if hasattr(self, "_metrics_server"):
             await self._metrics_server.stop()
         if hasattr(self, "db"):

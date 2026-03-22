@@ -25,9 +25,11 @@ import pytest
 from crabstero.markov import (
     DEFAULT_SENTENCE_END,
     _ingest_sentence,
+    _uningest_sentence,
     generate,
     ingest,
     is_complete_sentence,
+    uningest,
 )
 
 if TYPE_CHECKING:
@@ -101,7 +103,7 @@ class TestIngestSentence:
         assert await db.get_random_next_word(1, "B") == "C."
 
 
-class TestIngest:
+class TestIngestParagraph:
     """Paragraph ingestion splits into sentences."""
 
     async def test_single_sentence(self, db: Database) -> None:
@@ -287,3 +289,50 @@ class TestGenerate:
             " Chat a bit more so I can learn how this channel talks!"
         )
         assert result == expected
+
+
+class TestUningestSentence:
+    """Single sentence uningest from the Markov chain."""
+
+    async def test_removes_start_word_and_transition(self, db: Database) -> None:
+        """Uningest removes the start word and transition added by ingest."""
+        await _ingest_sentence(db, 1, 100, "Hello world.")
+        await _uningest_sentence(db, 1, 100, "Hello world.")
+        assert await db.get_random_start_word(1) is None
+        assert await db.get_random_next_word(1, "Hello") is None
+
+    async def test_preserves_other_data(self, db: Database) -> None:
+        """Uningest only removes data for the specified sentence."""
+        await _ingest_sentence(db, 1, 100, "Hello world.")
+        await _ingest_sentence(db, 1, 100, "Goodbye world.")
+        await _uningest_sentence(db, 1, 100, "Hello world.")
+        assert await db.get_random_start_word(1) == "Goodbye"
+
+    async def test_handles_missing_punctuation(self, db: Database) -> None:
+        """Uningest appends the default sentence end, matching ingest behavior."""
+        await _ingest_sentence(db, 1, 100, "Hello world")
+        await _uningest_sentence(db, 1, 100, "Hello world")
+        assert await db.get_random_start_word(1) is None
+
+    async def test_single_word_is_noop(self, db: Database) -> None:
+        """Uningesting a single-word sentence does not error."""
+        await _ingest_sentence(db, 1, 100, "Hello.")
+        await _uningest_sentence(db, 1, 100, "Hello.")
+
+
+class TestUningestParagraph:
+    """Paragraph-level uningest."""
+
+    async def test_uningest_multiple_sentences(self, db: Database) -> None:
+        """Uningest reverses a multi-sentence paragraph."""
+        await ingest(db, 1, 100, "Hello world. Goodbye world!")
+        await uningest(db, 1, 100, "Hello world. Goodbye world!")
+        assert await db.get_random_start_word(1) is None
+
+    async def test_uningest_preserves_duplicate_data(self, db: Database) -> None:
+        """Uningesting one copy leaves the other intact."""
+        await ingest(db, 1, 100, "Hello world.")
+        await ingest(db, 1, 100, "Hello world.")
+        await uningest(db, 1, 100, "Hello world.")
+        assert await db.get_random_start_word(1) == "Hello"
+        assert await db.get_random_next_word(1, "Hello") == "world."

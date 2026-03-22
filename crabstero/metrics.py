@@ -41,6 +41,10 @@ MESSAGES_INGESTED = Counter(
     "crabstero_messages_ingested_total",
     "Messages ingested into a Markov chain",
 )
+MESSAGES_UNINGESTED = Counter(
+    "crabstero_messages_uningested_total",
+    "Messages uningested from a Markov chain after deletion",
+)
 REPLIES_SENT = Counter(
     "crabstero_replies_sent_total",
     "Markov replies sent",

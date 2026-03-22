@@ -47,6 +47,39 @@ def is_complete_sentence(sentence: str) -> bool:
     return sentence[-1] in (DEFAULT_SENTENCE_END, ".", "!", "?")
 
 
+def _split_sentences(paragraph: str) -> list[str]:
+    """Normalize whitespace and split a paragraph into sentences.
+
+    :param paragraph: The raw paragraph text.
+    :return: A list of individual sentences.
+    """
+    if not is_complete_sentence(paragraph):
+        paragraph += DEFAULT_SENTENCE_END
+    normalized = re.sub(r" +", " ", paragraph.strip().replace("\n", " "))
+    return re.split(r"(?<=[.!?]) ", normalized)
+
+
+def _tokenize_sentence(
+    sentence: str,
+) -> tuple[list[str], list[tuple[str, str]]]:
+    """Tokenize a sentence into start words and transition pairs.
+
+    :param sentence: A single sentence.
+    :return: A tuple of (start_words, transitions) using bare word strings.
+    """
+    if not is_complete_sentence(sentence):
+        sentence += DEFAULT_SENTENCE_END
+    words = re.sub(r" +", " ", sentence.strip()).split(" ")
+
+    start_words: list[str] = []
+    transitions: list[tuple[str, str]] = []
+    for i in range(len(words) - 1):
+        if i == 0:
+            start_words.append(words[i])
+        transitions.append((words[i], words[i + 1]))
+    return start_words, transitions
+
+
 async def ingest(db: Database, channel_id: int, user_id: int, paragraph: str) -> None:
     """Ingest a paragraph into the Markov chain for a given channel.
 
@@ -58,15 +91,7 @@ async def ingest(db: Database, channel_id: int, user_id: int, paragraph: str) ->
     :param user_id: The Discord user ID of the contributor.
     :param paragraph: The paragraph of sentences to ingest.
     """
-    if not is_complete_sentence(paragraph):
-        paragraph += DEFAULT_SENTENCE_END
-
-    # Normalize whitespace, then split on sentence-ending punctuation
-    # followed by a space.
-    normalized = re.sub(r" +", " ", paragraph.strip().replace("\n", " "))
-    sentences = re.split(r"(?<=[.!?]) ", normalized)
-
-    for sentence in sentences:
+    for sentence in _split_sentences(paragraph):
         await _ingest_sentence(db, channel_id, user_id, sentence)
 
 
@@ -80,21 +105,41 @@ async def _ingest_sentence(
     :param user_id: The Discord user ID of the contributor.
     :param sentence: The sentence to ingest.
     """
-    if not is_complete_sentence(sentence):
-        sentence += DEFAULT_SENTENCE_END
-
-    # Normalize whitespace and split into individual words.
-    words = re.sub(r" +", " ", sentence.strip()).split(" ")
-
-    start_words: list[tuple[int, int, str]] = []
-    transitions: list[tuple[int, int, str, str]] = []
-
-    for i in range(len(words) - 1):
-        if i == 0:
-            start_words.append((channel_id, user_id, words[i]))
-        transitions.append((channel_id, user_id, words[i], words[i + 1]))
-
+    raw_starts, raw_transitions = _tokenize_sentence(sentence)
+    start_words = [(channel_id, user_id, w) for w in raw_starts]
+    transitions = [(channel_id, user_id, w, nw) for w, nw in raw_transitions]
     await db.add_markov_data(start_words, transitions)
+
+
+async def uningest(db: Database, channel_id: int, user_id: int, paragraph: str) -> None:
+    """Remove a paragraph's Markov data from the chain for a given channel.
+
+    Mirrors :func:`ingest` but deletes one matching row per entry instead of
+    inserting.
+
+    :param db: The database instance.
+    :param channel_id: The Discord channel ID.
+    :param user_id: The Discord user ID of the contributor.
+    :param paragraph: The paragraph of sentences to uningest.
+    """
+    for sentence in _split_sentences(paragraph):
+        await _uningest_sentence(db, channel_id, user_id, sentence)
+
+
+async def _uningest_sentence(
+    db: Database, channel_id: int, user_id: int, sentence: str
+) -> None:
+    """Remove a single sentence's Markov data from the chain.
+
+    :param db: The database instance.
+    :param channel_id: The Discord channel ID.
+    :param user_id: The Discord user ID of the contributor.
+    :param sentence: The sentence to uningest.
+    """
+    raw_starts, raw_transitions = _tokenize_sentence(sentence)
+    start_words = [(channel_id, user_id, w) for w in raw_starts]
+    transitions = [(channel_id, user_id, w, nw) for w, nw in raw_transitions]
+    await db.remove_markov_data(start_words, transitions)
 
 
 async def generate(

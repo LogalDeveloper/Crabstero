@@ -161,9 +161,9 @@ class Crabstero(commands.Bot):
         """Log that the bot has started successfully."""
         logger.info("Crabstero started!")
 
-    async def start(self, **kwargs: object) -> None:
+    async def start(self, token: str = "", *, reconnect: bool = True) -> None:
         """Start the bot using the token provided at initialization."""
-        await super().start(self._token, **kwargs)
+        await super().start(self._token, reconnect=reconnect)
 
     async def close(self) -> None:
         """Cancel ingestion workers, close the database, and then the bot connection."""

@@ -167,8 +167,8 @@ async def generate(
 
     if word is None:
         return (
-            "There's not enough data to generate a message yet."
-            " Chat a bit more so I can learn how this channel talks!"
+            "I do not have enough data to generate a message yet."
+            " Chat a bit more so I can learn how this channel talks."
         )
 
     with metrics.GENERATION_DURATION.time():

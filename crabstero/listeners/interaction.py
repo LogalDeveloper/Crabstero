@@ -76,8 +76,8 @@ class ForgetMeView(TrackedView):
         metrics.FORGETME.labels(outcome="completed").inc()
         await interaction.response.edit_message(
             content=(
-                "Your data has been deleted and your messages"
-                " will not be used going forward."
+                "I have deleted your data and I will not use"
+                " your messages going forward."
             ),
             view=None,
         )
@@ -95,7 +95,7 @@ class ForgetMeView(TrackedView):
         self._responded = True
         metrics.FORGETME.labels(outcome="cancelled").inc()
         await interaction.response.edit_message(
-            content="Action cancelled. Your data has not been modified.",
+            content="Action cancelled. I have not modified your data.",
             view=None,
         )
         self.stop()
@@ -108,7 +108,7 @@ class ForgetMeView(TrackedView):
         metrics.FORGETME.labels(outcome="timeout").inc()
         try:
             await self._interaction.edit_original_response(
-                content="This request has timed out. Run `/forgetme` again if needed.",
+                content="This timed out. Run `/forgetme` again if you still want to.",
                 view=None,
             )
         except discord.NotFound:
@@ -136,8 +136,8 @@ class InteractionCog(commands.Cog):
     @app_commands.command(
         name="pingme",
         description=(
-            "Opts into (or back out of) receiving pings"
-            " for generated messages which mention you."
+            "Toggle whether you receive pings"
+            " for generated messages that mention you."
         ),
     )
     async def pingme(self, interaction: discord.Interaction) -> None:
@@ -172,7 +172,7 @@ class InteractionCog(commands.Cog):
 
     @app_commands.command(
         name="forgetme",
-        description="Deletes all your data and stops the bot from using your messages.",
+        description="Delete all your data and stop your messages from being used.",
     )
     async def forgetme(self, interaction: discord.Interaction) -> None:
         """Delete all user data and set the noIngest flag.
@@ -184,17 +184,17 @@ class InteractionCog(commands.Cog):
         ):
             metrics.FORGETME.labels(outcome="already_forgotten").inc()
             await interaction.response.send_message(
-                "Your data has already been removed"
-                " and your messages will not be used going forward.",
+                "I have already removed your data"
+                " and I am not using your messages.",
                 ephemeral=True,
             )
             return
 
         view = ForgetMeView(interaction.user.id, self.bot.db, interaction)
         await interaction.response.send_message(
-            "This will delete all data the bot has learned"
-            " from your messages and your messages will not"
-            " be used going forward. Would you like to proceed?",
+            "I will delete everything I have learned from your"
+            " messages and I will not use them going forward."
+            " Would you like to proceed?",
             view=view,
             ephemeral=True,
         )

@@ -176,8 +176,8 @@ class TestGenerate:
         """Returns an informational message when the channel has no data."""
         result = await generate(db, 1)
         expected = (
-            "There's not enough data to generate a message yet."
-            " Chat a bit more so I can learn how this channel talks!"
+            "I do not have enough data to generate a message yet."
+            " Chat a bit more so I can learn how this channel talks."
         )
         assert result == expected
 
@@ -291,8 +291,8 @@ class TestGenerate:
         # Channel 3 has no data; should get the fallback.
         result = await generate(db, 3)
         expected = (
-            "There's not enough data to generate a message yet."
-            " Chat a bit more so I can learn how this channel talks!"
+            "I do not have enough data to generate a message yet."
+            " Chat a bit more so I can learn how this channel talks."
         )
         assert result == expected
 

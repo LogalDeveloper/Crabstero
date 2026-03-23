@@ -151,13 +151,13 @@ class Crabstero(commands.Bot):
 
             if self._metrics_server is not None:
                 reply = (
-                    "An error occurred while processing this command."
+                    "I encountered an error while processing this command."
                     " The developer has been notified,"
                     " please try again later."
                 )
             else:
                 reply = (
-                    "An error occurred while processing this command."
+                    "I encountered an error while processing this command."
                     " Please try again later."
                 )
 

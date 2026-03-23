@@ -66,6 +66,11 @@ PINGME = Counter(
     "/pingme command outcomes",
     ["outcome"],
 )
+FORGETME = Counter(
+    "crabstero_forgetme_total",
+    "/forgetme command outcomes",
+    ["outcome"],
+)
 ERRORS = Counter(
     "crabstero_errors_total",
     "Unhandled exceptions by source",

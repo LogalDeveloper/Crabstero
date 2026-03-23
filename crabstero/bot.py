@@ -30,7 +30,6 @@ from discord.ext import commands
 from crabstero import __version__ as crabstero_version
 from crabstero.cache import IngestCache
 from crabstero.database import Database
-from crabstero.listeners import interaction, message, server_events
 from crabstero.metrics import (
     DISCORD_EVENTS,
     DISCORD_LATENCY,
@@ -123,6 +122,8 @@ class Crabstero(commands.Bot):
             server = MetricsServer(*self._metrics_address)
             await server.start()
             self._metrics_server = server
+
+        from crabstero.listeners import interaction, message, server_events
 
         if not self._ingest_only:
             await interaction.setup(self)

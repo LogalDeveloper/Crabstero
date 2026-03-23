@@ -42,6 +42,7 @@ class TestMetricObjects:
             pytest.param("crabstero_messages_processed_total", id="messages-processed"),
             pytest.param("crabstero_channels_ingested_total", id="channels-ingested"),
             pytest.param("crabstero_pingme_total", id="pingme"),
+            pytest.param("crabstero_forgetme_total", id="forgetme"),
             pytest.param("crabstero_errors_total", id="errors"),
             pytest.param("crabstero_discord_latency_seconds", id="discord-latency"),
             pytest.param("crabstero_guild_count", id="guild-count"),

@@ -14,20 +14,113 @@
 
 """Handles responding to interactions.
 
-Provides the /pingme slash command as a Cog with an app command.
+Provides the /pingme and /forgetme slash commands as a Cog with app commands.
 """
 
-from typing import TYPE_CHECKING
+import logging
+from typing import TYPE_CHECKING, override
 
 import discord
 from discord import app_commands
 from discord.ext import commands
 
 from crabstero import flags, metrics
+from crabstero.bot import TrackedView
 from crabstero.flags import EntityType, Flag
 
 if TYPE_CHECKING:
     from crabstero.bot import Crabstero
+    from crabstero.database import Database
+
+logger = logging.getLogger(__name__)
+
+
+class ForgetMeView(TrackedView):
+    """Confirmation view with Confirm/Cancel buttons for /forgetme."""
+
+    def __init__(
+        self, user_id: int, db: Database, interaction: discord.Interaction
+    ) -> None:
+        """Create a new ForgetMeView.
+
+        :param user_id: The Discord user ID who invoked the command.
+        :param db: The database instance.
+        :param interaction: The original interaction for editing on timeout.
+        """
+        super().__init__()
+        self._user_id = user_id
+        self._db = db
+        self._responded = False
+        self._interaction = interaction
+
+    @override
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        """Only allow the invoking user to interact with the buttons.
+
+        :param interaction: The interaction event.
+        :return: True if the user matches, False otherwise.
+        """
+        return interaction.user.id == self._user_id
+
+    @discord.ui.button(label="Confirm", style=discord.ButtonStyle.danger)
+    async def confirm(
+        self, interaction: discord.Interaction, button: discord.ui.Button[ForgetMeView]
+    ) -> None:
+        """Delete all user data, clear flags, and set noIngest.
+
+        :param interaction: The interaction event.
+        :param button: The button that was pressed.
+        """
+        self._responded = True
+        await self._db.forget_user(self._user_id, Flag.NO_INGEST)
+        metrics.FORGETME.labels(outcome="completed").inc()
+        await interaction.response.edit_message(
+            content=(
+                "Your data has been deleted and your messages"
+                " will not be used going forward."
+            ),
+            view=None,
+        )
+        self.stop()
+
+    @discord.ui.button(label="Cancel", style=discord.ButtonStyle.secondary)
+    async def cancel(
+        self, interaction: discord.Interaction, button: discord.ui.Button[ForgetMeView]
+    ) -> None:
+        """Cancel the /forgetme action.
+
+        :param interaction: The interaction event.
+        :param button: The button that was pressed.
+        """
+        self._responded = True
+        metrics.FORGETME.labels(outcome="cancelled").inc()
+        await interaction.response.edit_message(
+            content="Action cancelled. Your data has not been modified.",
+            view=None,
+        )
+        self.stop()
+
+    @override
+    async def on_timeout(self) -> None:
+        """Remove buttons and increment timeout metric."""
+        if self._responded:
+            return
+        metrics.FORGETME.labels(outcome="timeout").inc()
+        try:
+            await self._interaction.edit_original_response(
+                content="This request has timed out. Run `/forgetme` again if needed.",
+                view=None,
+            )
+        except discord.NotFound:
+            logger.debug(
+                "Original /forgetme response for user %s was already deleted.",
+                self._user_id,
+            )
+        except discord.HTTPException:
+            logger.debug(
+                "Failed to edit timed-out /forgetme response for user %s.",
+                self._user_id,
+            )
 
 
 class InteractionCog(commands.Cog):
@@ -76,6 +169,35 @@ class InteractionCog(commands.Cog):
                 " `/pingme` any time.",
                 ephemeral=True,
             )
+
+    @app_commands.command(
+        name="forgetme",
+        description="Deletes all your data and stops the bot from using your messages.",
+    )
+    async def forgetme(self, interaction: discord.Interaction) -> None:
+        """Delete all user data and set the noIngest flag.
+
+        :param interaction: The interaction event.
+        """
+        if await flags.is_flag_set(
+            self.bot.db, interaction.user, EntityType.USER, Flag.NO_INGEST
+        ):
+            metrics.FORGETME.labels(outcome="already_forgotten").inc()
+            await interaction.response.send_message(
+                "Your data has already been removed"
+                " and your messages will not be used going forward.",
+                ephemeral=True,
+            )
+            return
+
+        view = ForgetMeView(interaction.user.id, self.bot.db, interaction)
+        await interaction.response.send_message(
+            "This will delete all data the bot has learned"
+            " from your messages and your messages will not"
+            " be used going forward. Would you like to proceed?",
+            view=view,
+            ephemeral=True,
+        )
 
 
 async def setup(bot: Crabstero) -> None:

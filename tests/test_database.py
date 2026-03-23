@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from crabstero.database import ChannelImage, Database, StartWord, Transition
+from crabstero.flags import Flag
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -312,6 +313,77 @@ class TestTransactionRollback:
                 (1, 100, "should_not_persist"),
             )
             raise RuntimeError("simulated failure")
+
+
+class TestForgetUser:
+    """Atomic forget-user transaction across all tables."""
+
+    async def test_deletes_data_and_sets_no_ingest(self, db: Database) -> None:
+        """All user data is removed and noIngest flag is set."""
+        await db.add_markov_data(
+            [StartWord(1, 100, "Hello")],
+            [Transition(1, 100, "Hello", "world.")],
+        )
+        await db.add_images([ChannelImage(1, 100, "https://example.com/a.png")])
+        await db.set_flag("user", "100", "allowPings")
+
+        await db.forget_user(100, Flag.NO_INGEST)
+
+        assert await db.get_random_start_word(1) is None
+        assert await db.get_random_next_word(1, "Hello") is None
+        assert await db.get_random_image(1) is None
+        assert await db.is_flag_set("user", "100", "allowPings") is False
+        assert await db.is_flag_set("user", "100", Flag.NO_INGEST) is True
+
+    async def test_preserves_other_users(self, db: Database) -> None:
+        """Data belonging to other users is not affected."""
+        await db.add_markov_data(
+            [StartWord(1, 100, "Gone"), StartWord(1, 200, "Keep")],
+            [
+                Transition(1, 100, "Gone", "away."),
+                Transition(1, 200, "Keep", "this."),
+            ],
+        )
+        await db.add_images(
+            [
+                ChannelImage(1, 100, "https://example.com/gone.png"),
+                ChannelImage(1, 200, "https://example.com/stay.png"),
+            ]
+        )
+        await db.set_flag("user", "200", "allowPings")
+
+        await db.forget_user(100, Flag.NO_INGEST)
+
+        assert await db.get_random_start_word(1) == "Keep"
+        assert await db.get_random_next_word(1, "Keep") == "this."
+        assert await db.get_random_image(1) == "https://example.com/stay.png"
+        assert await db.is_flag_set("user", "200", "allowPings") is True
+
+    async def test_preserves_other_entity_type_flags(self, db: Database) -> None:
+        """Flags on channels with the same entity ID are not affected."""
+        await db.set_flag("channel", "100", "noReply")
+        await db.set_flag("user", "100", "noReply")
+
+        await db.forget_user(100, Flag.NO_INGEST)
+
+        assert await db.is_flag_set("channel", "100", "noReply") is True
+        assert await db.is_flag_set("user", "100", "noReply") is False
+
+    async def test_clears_existing_flags_except_no_ingest(self, db: Database) -> None:
+        """Existing user flags are cleared but noIngest remains."""
+        await db.set_flag("user", "100", "noReply")
+        await db.set_flag("user", "100", "allowPings")
+
+        await db.forget_user(100, Flag.NO_INGEST)
+
+        assert await db.is_flag_set("user", "100", "noReply") is False
+        assert await db.is_flag_set("user", "100", "allowPings") is False
+        assert await db.is_flag_set("user", "100", Flag.NO_INGEST) is True
+
+    async def test_noop_for_nonexistent_user(self, db: Database) -> None:
+        """Forgetting a user with no data does not raise."""
+        await db.forget_user(999, Flag.NO_INGEST)
+        assert await db.is_flag_set("user", "999", Flag.NO_INGEST) is True
 
 
 class TestWriteDurability:

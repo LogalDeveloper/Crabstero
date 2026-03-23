@@ -410,3 +410,37 @@ class Database:
                 "INSERT OR IGNORE INTO ingested_channels (channel_id) VALUES (?)",
                 (channel_id,),
             )
+
+    async def forget_user(self, user_id: int, no_ingest_flag: str) -> None:
+        """Delete all user data, clear flags, and set noIngest atomically.
+
+        Sets the noIngest flag, clears all other user flags, and deletes
+        all Markov and image data in a single transaction.
+
+        :param user_id: The Discord user ID to forget.
+        :param no_ingest_flag: The flag name for noIngest.
+        """
+        entity_id = str(user_id)
+        async with self._transaction():
+            await self._connection.execute(
+                "INSERT OR IGNORE INTO flags (entity_type, entity_id, flag_name)"
+                " VALUES ('user', ?, ?)",
+                (entity_id, no_ingest_flag),
+            )
+            await self._connection.execute(
+                "DELETE FROM flags WHERE entity_type = 'user'"
+                " AND entity_id = ? AND flag_name != ?",
+                (entity_id, no_ingest_flag),
+            )
+            await self._connection.execute(
+                "DELETE FROM markov_start_words WHERE user_id = ?",
+                (user_id,),
+            )
+            await self._connection.execute(
+                "DELETE FROM markov_transitions WHERE user_id = ?",
+                (user_id,),
+            )
+            await self._connection.execute(
+                "DELETE FROM channel_images WHERE user_id = ?",
+                (user_id,),
+            )

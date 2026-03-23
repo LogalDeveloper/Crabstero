@@ -14,6 +14,7 @@
 
 """Async SQLite database access for Crabstero's persistent storage."""
 
+import asyncio
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, NamedTuple, Self
 
@@ -109,21 +110,24 @@ class Database:
         :param connection: An open aiosqlite connection.
         """
         self._connection = connection
+        self._tx_lock = asyncio.Lock()
 
     @asynccontextmanager
     async def _transaction(self) -> AsyncIterator[None]:
         """Begin an immediate write transaction.
 
-        Commits on success, rolls back on error.
+        Acquires an async lock so that only one transaction runs at a
+        time, then commits on success or rolls back on error.
         """
-        await self._connection.execute("BEGIN IMMEDIATE")
-        try:
-            yield
-        except BaseException:
-            await self._connection.rollback()
-            raise
-        else:
-            await self._connection.commit()
+        async with self._tx_lock:
+            await self._connection.execute("BEGIN IMMEDIATE")
+            try:
+                yield
+            except BaseException:
+                await self._connection.rollback()
+                raise
+            else:
+                await self._connection.commit()
 
     @classmethod
     async def connect(cls, path: str) -> Self:

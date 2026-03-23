@@ -14,7 +14,7 @@
 
 """Bulk-ingests the message history of channels.
 
-Channels are enqueued for processing by the bot's fixed ingestion worker pool.
+Channels are processed by the bot's semaphore-bounded dynamic tasks.
 """
 
 import logging

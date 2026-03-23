@@ -41,18 +41,11 @@ class TestMetricObjects:
             pytest.param("crabstero_embeds_generated_total", id="embeds-generated"),
             pytest.param("crabstero_messages_processed_total", id="messages-processed"),
             pytest.param("crabstero_channels_ingested_total", id="channels-ingested"),
-            pytest.param(
-                "crabstero_channel_ingestion_errors_total",
-                id="channel-ingestion-errors",
-            ),
-            pytest.param("crabstero_pingme_opted_in_total", id="pingme-opted-in"),
-            pytest.param("crabstero_pingme_opted_out_total", id="pingme-opted-out"),
-            pytest.param("crabstero_pingme_errors_total", id="pingme-errors"),
+            pytest.param("crabstero_pingme_total", id="pingme"),
+            pytest.param("crabstero_errors_total", id="errors"),
             pytest.param("crabstero_discord_latency_seconds", id="discord-latency"),
             pytest.param("crabstero_guild_count", id="guild-count"),
-            pytest.param(
-                "crabstero_ingestion_backlog_channels", id="ingestion-backlog"
-            ),
+            pytest.param("crabstero_ingestion_active_channels", id="ingestion-active"),
             pytest.param(
                 "crabstero_message_ingestion_duration_seconds",
                 id="message-ingestion-duration",

@@ -46,17 +46,6 @@ class TestParseArgs:
         args = _parse_args(["--token", "test", "--database-path", "/custom.db"])
         assert args.database_path == "/custom.db"
 
-    def test_ingestion_workers_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Omitting --ingestion-workers defaults to 4."""
-        monkeypatch.delenv("INGESTION_WORKERS", raising=False)
-        args = _parse_args(["--token", "test"])
-        assert args.ingestion_workers == 4
-
-    def test_ingestion_workers_override(self) -> None:
-        """--ingestion-workers overrides the default."""
-        args = _parse_args(["--token", "test", "--ingestion-workers", "8"])
-        assert args.ingestion_workers == 8
-
     def test_ingest_only_flag(self) -> None:
         """--ingest-only sets ingest_only to True."""
         args = _parse_args(["--token", "test", "--ingest-only"])

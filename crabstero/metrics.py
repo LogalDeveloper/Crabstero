@@ -61,21 +61,15 @@ CHANNELS_INGESTED = Counter(
     "crabstero_channels_ingested_total",
     "Channels fully ingested successfully",
 )
-CHANNEL_INGESTION_ERRORS = Counter(
-    "crabstero_channel_ingestion_errors_total",
-    "Channel ingestions that failed",
+PINGME = Counter(
+    "crabstero_pingme_total",
+    "/pingme command outcomes",
+    ["outcome"],
 )
-PINGME_OPTED_IN = Counter(
-    "crabstero_pingme_opted_in_total",
-    "/pingme opt-ins",
-)
-PINGME_OPTED_OUT = Counter(
-    "crabstero_pingme_opted_out_total",
-    "/pingme opt-outs",
-)
-PINGME_ERRORS = Counter(
-    "crabstero_pingme_errors_total",
-    "/pingme exceptions",
+ERRORS = Counter(
+    "crabstero_errors_total",
+    "Unhandled exceptions by source",
+    ["source"],
 )
 DISCORD_EVENTS = Counter(
     "crabstero_discord_events_total",
@@ -91,9 +85,9 @@ GUILD_COUNT = Gauge(
     "crabstero_guild_count",
     "Guilds the bot is currently in",
 )
-INGESTION_BACKLOG = Gauge(
-    "crabstero_ingestion_backlog_channels",
-    "Channels currently queued for ingestion",
+INGESTION_ACTIVE = Gauge(
+    "crabstero_ingestion_active_channels",
+    "Channels pending or in-progress for ingestion",
 )
 
 MESSAGE_INGESTION_DURATION = Histogram(

@@ -80,26 +80,6 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             ' variable or "crabstero.db").'
         ),
     )
-    workers_env = os.environ.get("INGESTION_WORKERS", "4")
-    try:
-        workers_default = int(workers_env)
-    except ValueError:
-        logger.warning(
-            "Invalid INGESTION_WORKERS value '%s', defaulting to 4.",
-            workers_env,
-        )
-        workers_default = 4
-
-    parser.add_argument(
-        "--ingestion-workers",
-        type=int,
-        default=workers_default,
-        help=(
-            "Number of concurrent ingestion workers"
-            " (default: INGESTION_WORKERS environment"
-            " variable or 4)."
-        ),
-    )
     parser.add_argument(
         "--ingest-only",
         action="store_true",
@@ -157,7 +137,6 @@ def main() -> None:
     bot = Crabstero(
         token=args.token,
         database_path=args.database_path,
-        ingestion_workers=args.ingestion_workers,
         ingest_only=args.ingest_only,
         metrics_address=args.listen_metrics,
     )

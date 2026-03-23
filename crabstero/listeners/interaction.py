@@ -136,8 +136,7 @@ class InteractionCog(commands.Cog):
     @app_commands.command(
         name="pingme",
         description=(
-            "Toggle whether you receive pings"
-            " for generated messages that mention you."
+            "Toggle whether you receive pings for generated messages that mention you."
         ),
     )
     async def pingme(self, interaction: discord.Interaction) -> None:
@@ -184,8 +183,7 @@ class InteractionCog(commands.Cog):
         ):
             metrics.FORGETME.labels(outcome="already_forgotten").inc()
             await interaction.response.send_message(
-                "I have already removed your data"
-                " and I am not using your messages.",
+                "I have already removed your data and I am not using your messages.",
                 ephemeral=True,
             )
             return

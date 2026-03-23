@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from crabstero.cache import CachedMessage, IngestCache
+from crabstero.database import ChannelImage
 from crabstero.markov import ingest, uningest
 
 if TYPE_CHECKING:
@@ -50,8 +51,8 @@ class TestIngestUningestCycle:
 
     async def test_image_round_trip(self, db: Database) -> None:
         """Ingest and uningest an image leaves the database clean."""
-        await db.add_images([(1, 100, "https://example.com/cat.png")])
-        await db.remove_images([(1, 100, "https://example.com/cat.png")])
+        await db.add_images([ChannelImage(1, 100, "https://example.com/cat.png")])
+        await db.remove_images([ChannelImage(1, 100, "https://example.com/cat.png")])
 
         assert await db.get_random_image(1) is None
 
@@ -140,7 +141,7 @@ class TestUningestRestoresState:
     ) -> None:
         """Ingest then uningest preserves unrelated pre-existing data exactly."""
         await ingest(db, 99, 200, "Pre-existing data stays safe.")
-        await db.add_images([(99, 200, "https://example.com/existing.png")])
+        await db.add_images([ChannelImage(99, 200, "https://example.com/existing.png")])
 
         before = await _snapshot(db)
         await ingest(db, 1, 100, text)

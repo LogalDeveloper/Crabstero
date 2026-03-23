@@ -113,8 +113,6 @@ ignore = [
 asyncio_mode = "auto"
 
 [tool.ruff.lint.per-file-ignores]
-"crabstero/__init__.py" = ["E402"]     # constants defined before imports intentionally
-"crabstero/__main__.py" = ["T201"]     # CLI entry point uses print() for user output
 "tests/**" = ["S101"]                  # assert is standard for pytest
 
 [tool.coverage.run]

@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from crabstero.database import StartWord, Transition
 from crabstero.markov import (
     DEFAULT_SENTENCE_END,
     _ingest_sentence,
@@ -211,16 +212,16 @@ class TestGenerate:
         # continuing ("E") and completing ("end.") transition, so
         # get_random_completing_next_word deterministically picks "end.".
         await db.add_markov_data(
-            [(1, 100, "A")],
+            [StartWord(1, 100, "A")],
             [
-                (1, 100, "A", "B"),
-                (1, 100, "B", "C"),
-                (1, 100, "C", "D"),
-                (1, 100, "D", "E"),
-                (1, 100, "D", "F"),
-                (1, 100, "D", "G"),
-                (1, 100, "D", "H"),
-                (1, 100, "D", "end."),
+                Transition(1, 100, "A", "B"),
+                Transition(1, 100, "B", "C"),
+                Transition(1, 100, "C", "D"),
+                Transition(1, 100, "D", "E"),
+                Transition(1, 100, "D", "F"),
+                Transition(1, 100, "D", "G"),
+                Transition(1, 100, "D", "H"),
+                Transition(1, 100, "D", "end."),
             ],
         )
 
@@ -230,14 +231,14 @@ class TestGenerate:
 
     async def test_start_word_already_ends_sentence(self, db: Database) -> None:
         """Generation stops immediately when the start word is sentence-ending."""
-        await db.add_markov_data([(1, 100, "Yes.")], [])
+        await db.add_markov_data([StartWord(1, 100, "Yes.")], [])
 
         result = await generate(db, 1)
         assert result == "Yes."
 
     async def test_chain_dead_end(self, db: Database) -> None:
         """Generation stops when no next word exists (dead-end chain)."""
-        await db.add_markov_data([(1, 100, "Hello")], [])
+        await db.add_markov_data([StartWord(1, 100, "Hello")], [])
 
         # "Hello" has no transitions, so the loop breaks immediately.
         result = await generate(db, 1)
@@ -247,10 +248,10 @@ class TestGenerate:
         """Section sign at the truncation boundary is stripped."""
         # Build a chain: "A" -> "B" -> "C§".
         await db.add_markov_data(
-            [(1, 100, "A")],
+            [StartWord(1, 100, "A")],
             [
-                (1, 100, "A", "B"),
-                (1, 100, "B", f"C{DEFAULT_SENTENCE_END}"),
+                Transition(1, 100, "A", "B"),
+                Transition(1, 100, "B", f"C{DEFAULT_SENTENCE_END}"),
             ],
         )
 
@@ -264,14 +265,19 @@ class TestGenerate:
         """After soft_limit, falls back when no completing word exists."""
         # "A" -> "B" (no completing transition). Past soft_limit,
         # get_random_completing_next_word returns None, falls back to "B".
-        await db.add_markov_data([(1, 100, "A")], [(1, 100, "A", "B")])
+        await db.add_markov_data(
+            [StartWord(1, 100, "A")], [Transition(1, 100, "A", "B")]
+        )
 
         result = await generate(db, 1, soft_limit=1, hard_limit=1000)
         assert result == "A B"
 
     async def test_hard_limit_truncates_mid_word(self, db: Database) -> None:
         """Hard limit slices output even when it falls inside a word."""
-        await db.add_markov_data([(1, 100, "AB")], [(1, 100, "AB", "CDEF")])
+        await db.add_markov_data(
+            [StartWord(1, 100, "AB")],
+            [Transition(1, 100, "AB", "CDEF")],
+        )
 
         # "AB CDEF" is 7 chars; hard_limit=5 truncates to "AB CD".
         result = await generate(db, 1, soft_limit=100, hard_limit=5)

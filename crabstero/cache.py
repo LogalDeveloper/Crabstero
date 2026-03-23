@@ -47,6 +47,8 @@ class IngestCache:
     :param cleanup_interval_seconds: How often the background task runs.
     """
 
+    __slots__ = ("_cleanup_interval", "_entries", "_task", "_ttl")
+
     def __init__(
         self,
         ttl_seconds: float = 120,

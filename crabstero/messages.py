@@ -27,14 +27,15 @@ import discord
 
 from crabstero import flags, markov, metrics
 from crabstero.cache import CachedMessage, IngestCache
+from crabstero.database import ChannelImage
 from crabstero.flags import EntityType, Flag
 
 if TYPE_CHECKING:
     from crabstero.database import Database
 
 # Copied from discordjs/discord-api-types:
-# https://github.com/discordjs/discord-api-types/blob/7fe434114e91c80ed79f0204ae6c73047672d55d/globals.ts#L30
-MENTION_PATTERN = re.compile(r"<@!?(?P<id>\d{17,20})>")
+# https://github.com/discordjs/discord-api-types/blob/662cb0cb0ac9c6f9ad93e180849476714bfceb0c/globals.ts#L39
+_MENTION_PATTERN = re.compile(r"<@!?(?P<id>\d{17,20})>")
 
 _EMBED_CHANCE_THRESHOLD = 95  # Out of 100; sends an embed ~5% of the time.
 
@@ -89,7 +90,7 @@ async def reply_to_message(db: Database, message: discord.Message) -> None:
     # Suppress all mentions by default; only ping users who opted in.
     allowed_user_ids: set[int] = set()
 
-    for match in MENTION_PATTERN.finditer(body):
+    for match in _MENTION_PATTERN.finditer(body):
         user_id = int(match.group("id"))
 
         if await flags.is_flag_set(db, user_id, EntityType.USER, Flag.ALLOW_PINGS):
@@ -169,7 +170,9 @@ async def ingest_message(
                 image_urls.append(embed.image.url)
 
         if image_urls:
-            await db.add_images([(channel_id, user_id, url) for url in image_urls])
+            await db.add_images(
+                [ChannelImage(channel_id, user_id, url) for url in image_urls]
+            )
 
     metrics.MESSAGES_INGESTED.inc()
 
@@ -208,7 +211,10 @@ async def uningest_message(db: Database, cache: IngestCache, message_id: int) ->
 
     if entry.image_urls:
         await db.remove_images(
-            [(entry.channel_id, entry.user_id, url) for url in entry.image_urls]
+            [
+                ChannelImage(entry.channel_id, entry.user_id, url)
+                for url in entry.image_urls
+            ]
         )
 
     metrics.MESSAGES_UNINGESTED.inc()

@@ -24,6 +24,7 @@ import re
 from typing import TYPE_CHECKING
 
 from crabstero import metrics
+from crabstero.database import StartWord, Transition
 
 if TYPE_CHECKING:
     from crabstero.database import Database
@@ -116,8 +117,8 @@ async def _ingest_sentence(
     :param sentence: The sentence to ingest.
     """
     raw_starts, raw_transitions = _tokenize_sentence(sentence)
-    start_words = [(channel_id, user_id, w) for w in raw_starts]
-    transitions = [(channel_id, user_id, w, nw) for w, nw in raw_transitions]
+    start_words = [StartWord(channel_id, user_id, w) for w in raw_starts]
+    transitions = [Transition(channel_id, user_id, w, nw) for w, nw in raw_transitions]
     await db.add_markov_data(start_words, transitions)
 
 
@@ -147,8 +148,8 @@ async def _uningest_sentence(
     :param sentence: The sentence to uningest.
     """
     raw_starts, raw_transitions = _tokenize_sentence(sentence)
-    start_words = [(channel_id, user_id, w) for w in raw_starts]
-    transitions = [(channel_id, user_id, w, nw) for w, nw in raw_transitions]
+    start_words = [StartWord(channel_id, user_id, w) for w in raw_starts]
+    transitions = [Transition(channel_id, user_id, w, nw) for w, nw in raw_transitions]
     await db.remove_markov_data(start_words, transitions)
 
 
@@ -201,8 +202,7 @@ async def generate(
             result = result[:hard_limit]
 
         # Strip the internal sentence-end marker so it never appears in output.
-        if result.endswith(DEFAULT_SENTENCE_END):
-            result = result[:-1]
+        result = result.removesuffix(DEFAULT_SENTENCE_END)
 
         metrics.GENERATED_MESSAGE_LENGTH.observe(len(result))
         return result

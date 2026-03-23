@@ -27,7 +27,7 @@ if TYPE_CHECKING:
     from crabstero.database import Database
 
 
-class Flag(enum.Enum):
+class Flag(enum.StrEnum):
     """Enum of all supported flag names."""
 
     NO_REPLY = "noReply"
@@ -35,7 +35,7 @@ class Flag(enum.Enum):
     ALLOW_PINGS = "allowPings"
 
 
-class EntityType(enum.Enum):
+class EntityType(enum.StrEnum):
     """Enum of entity types that can have flags."""
 
     CHANNEL = "channel"
@@ -65,7 +65,7 @@ async def set_flag(
     :param entity_type: The type of the entity.
     :param flag: The flag to set.
     """
-    await db.set_flag(entity_type.value, _entity_id(entity), flag.value)
+    await db.set_flag(entity_type, _entity_id(entity), flag)
 
 
 async def clear_flag(
@@ -81,7 +81,7 @@ async def clear_flag(
     :param entity_type: The type of the entity.
     :param flag: The flag to clear.
     """
-    await db.clear_flag(entity_type.value, _entity_id(entity), flag.value)
+    await db.clear_flag(entity_type, _entity_id(entity), flag)
 
 
 async def is_flag_set(
@@ -98,4 +98,4 @@ async def is_flag_set(
     :param flag: The flag to check for.
     :return: True if the flag is set, False otherwise.
     """
-    return await db.is_flag_set(entity_type.value, _entity_id(entity), flag.value)
+    return await db.is_flag_set(entity_type, _entity_id(entity), flag)

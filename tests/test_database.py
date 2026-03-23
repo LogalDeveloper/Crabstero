@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from crabstero.database import Database
+from crabstero.database import ChannelImage, Database, StartWord, Transition
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -58,21 +58,21 @@ class TestAddMarkovData:
 
     async def test_stores_start_word(self, db: Database) -> None:
         """Inserted start word can be retrieved by channel."""
-        await db.add_markov_data([(1, 100, "Hello")], [])
+        await db.add_markov_data([StartWord(1, 100, "Hello")], [])
         result = await db.get_random_start_word(1)
         assert result == "Hello"
 
     async def test_stores_transition(self, db: Database) -> None:
         """Inserted transition can be retrieved by channel and word."""
-        await db.add_markov_data([], [(1, 100, "Hello", "world.")])
+        await db.add_markov_data([], [Transition(1, 100, "Hello", "world.")])
         result = await db.get_random_next_word(1, "Hello")
         assert result == "world."
 
     async def test_stores_both_in_single_call(self, db: Database) -> None:
         """Start words and transitions are stored in a single call."""
         await db.add_markov_data(
-            [(1, 100, "Hello")],
-            [(1, 100, "Hello", "world.")],
+            [StartWord(1, 100, "Hello")],
+            [Transition(1, 100, "Hello", "world.")],
         )
         assert await db.get_random_start_word(1) == "Hello"
         assert await db.get_random_next_word(1, "Hello") == "world."
@@ -98,8 +98,8 @@ class TestAddMarkovData:
         await db.add_markov_data(
             [],
             [
-                (1, 100, "Hello", "beautiful"),
-                (1, 100, "Hello", completing_word),
+                Transition(1, 100, "Hello", "beautiful"),
+                Transition(1, 100, "Hello", completing_word),
             ],
         )
         for _ in range(100):
@@ -108,7 +108,7 @@ class TestAddMarkovData:
 
     async def test_completing_returns_none_without_match(self, db: Database) -> None:
         """Returns None when no transitions end with sentence punctuation."""
-        await db.add_markov_data([], [(1, 100, "Hello", "beautiful")])
+        await db.add_markov_data([], [Transition(1, 100, "Hello", "beautiful")])
         result = await db.get_random_completing_next_word(1, "Hello")
         assert result is None
 
@@ -127,7 +127,7 @@ class TestImages:
 
     async def test_add_and_retrieve(self, db: Database) -> None:
         """Inserted image URL can be retrieved by channel."""
-        await db.add_images([(1, 100, "https://example.com/cat.png")])
+        await db.add_images([ChannelImage(1, 100, "https://example.com/cat.png")])
         result = await db.get_random_image(1)
         assert result == "https://example.com/cat.png"
 
@@ -186,48 +186,63 @@ class TestRemoveMarkovData:
 
     async def test_removes_one_start_word(self, db: Database) -> None:
         """Removes exactly one matching start word row."""
-        await db.add_markov_data([(1, 100, "Hello"), (1, 100, "Hello")], [])
-        await db.remove_markov_data([(1, 100, "Hello")], [])
+        await db.add_markov_data(
+            [StartWord(1, 100, "Hello"), StartWord(1, 100, "Hello")], []
+        )
+        await db.remove_markov_data([StartWord(1, 100, "Hello")], [])
         # One copy should remain.
         assert await db.get_random_start_word(1) == "Hello"
 
     async def test_removes_one_transition(self, db: Database) -> None:
         """Removes exactly one matching transition row."""
         await db.add_markov_data(
-            [], [(1, 100, "Hello", "world."), (1, 100, "Hello", "world.")]
+            [],
+            [
+                Transition(1, 100, "Hello", "world."),
+                Transition(1, 100, "Hello", "world."),
+            ],
         )
-        await db.remove_markov_data([], [(1, 100, "Hello", "world.")])
+        await db.remove_markov_data([], [Transition(1, 100, "Hello", "world.")])
         assert await db.get_random_next_word(1, "Hello") == "world."
 
     async def test_removes_last_start_word(self, db: Database) -> None:
         """Removing the only start word leaves the table empty for that channel."""
-        await db.add_markov_data([(1, 100, "Hello")], [])
-        await db.remove_markov_data([(1, 100, "Hello")], [])
+        await db.add_markov_data([StartWord(1, 100, "Hello")], [])
+        await db.remove_markov_data([StartWord(1, 100, "Hello")], [])
         assert await db.get_random_start_word(1) is None
 
     async def test_removes_last_transition(self, db: Database) -> None:
         """Removing the only transition leaves no next word."""
-        await db.add_markov_data([], [(1, 100, "Hello", "world.")])
-        await db.remove_markov_data([], [(1, 100, "Hello", "world.")])
+        await db.add_markov_data([], [Transition(1, 100, "Hello", "world.")])
+        await db.remove_markov_data([], [Transition(1, 100, "Hello", "world.")])
         assert await db.get_random_next_word(1, "Hello") is None
 
     async def test_no_match_is_noop(self, db: Database) -> None:
         """Removing a non-existent row does not raise."""
-        await db.remove_markov_data([(1, 100, "nope")], [(1, 100, "nope", "nah")])
+        await db.remove_markov_data(
+            [StartWord(1, 100, "nope")],
+            [Transition(1, 100, "nope", "nah")],
+        )
 
     async def test_start_word_removal_scoped_to_channel(self, db: Database) -> None:
         """Removing a start word in one channel leaves another channel intact."""
-        await db.add_markov_data([(1, 100, "Hello"), (2, 200, "Hello")], [])
-        await db.remove_markov_data([(1, 100, "Hello")], [])
+        await db.add_markov_data(
+            [StartWord(1, 100, "Hello"), StartWord(2, 200, "Hello")], []
+        )
+        await db.remove_markov_data([StartWord(1, 100, "Hello")], [])
         assert await db.get_random_start_word(1) is None
         assert await db.get_random_start_word(2) == "Hello"
 
     async def test_transition_removal_scoped_to_channel(self, db: Database) -> None:
         """Removing a transition in one channel leaves another channel intact."""
         await db.add_markov_data(
-            [], [(1, 100, "Hello", "world."), (2, 200, "Hello", "world.")]
+            [],
+            [
+                Transition(1, 100, "Hello", "world."),
+                Transition(2, 200, "Hello", "world."),
+            ],
         )
-        await db.remove_markov_data([], [(1, 100, "Hello", "world.")])
+        await db.remove_markov_data([], [Transition(1, 100, "Hello", "world.")])
         assert await db.get_random_next_word(1, "Hello") is None
         assert await db.get_random_next_word(2, "Hello") == "world."
 
@@ -243,35 +258,35 @@ class TestRemoveImages:
         """Removes exactly one matching image row."""
         await db.add_images(
             [
-                (1, 100, "https://example.com/a.png"),
-                (1, 100, "https://example.com/a.png"),
+                ChannelImage(1, 100, "https://example.com/a.png"),
+                ChannelImage(1, 100, "https://example.com/a.png"),
             ]
         )
-        await db.remove_images([(1, 100, "https://example.com/a.png")])
+        await db.remove_images([ChannelImage(1, 100, "https://example.com/a.png")])
         # One copy should remain.
         assert await db.get_random_image(1) == "https://example.com/a.png"
 
     async def test_removes_last_image(self, db: Database) -> None:
         """Removing the only image leaves none for that channel."""
-        await db.add_images([(1, 100, "https://example.com/a.png")])
-        await db.remove_images([(1, 100, "https://example.com/a.png")])
+        await db.add_images([ChannelImage(1, 100, "https://example.com/a.png")])
+        await db.remove_images([ChannelImage(1, 100, "https://example.com/a.png")])
         assert await db.get_random_image(1) is None
 
     async def test_image_removal_scoped_to_channel(self, db: Database) -> None:
         """Removing an image in one channel leaves another channel intact."""
         await db.add_images(
             [
-                (1, 100, "https://example.com/a.png"),
-                (2, 200, "https://example.com/a.png"),
+                ChannelImage(1, 100, "https://example.com/a.png"),
+                ChannelImage(2, 200, "https://example.com/a.png"),
             ]
         )
-        await db.remove_images([(1, 100, "https://example.com/a.png")])
+        await db.remove_images([ChannelImage(1, 100, "https://example.com/a.png")])
         assert await db.get_random_image(1) is None
         assert await db.get_random_image(2) == "https://example.com/a.png"
 
     async def test_no_match_is_noop(self, db: Database) -> None:
         """Removing a non-existent image does not raise."""
-        await db.remove_images([(1, 100, "https://example.com/nope.png")])
+        await db.remove_images([ChannelImage(1, 100, "https://example.com/nope.png")])
 
     async def test_empty_list_is_noop(self, db: Database) -> None:
         """Empty list does not error."""
@@ -285,7 +300,10 @@ class TestWriteDurability:
         """Data written via add_markov_data is durable after close/reopen."""
         db_path = str(tmp_path / "durability.db")
         db = await Database.connect(db_path)
-        await db.add_markov_data([(1, 100, "Hello")], [(1, 100, "Hello", "world.")])
+        await db.add_markov_data(
+            [StartWord(1, 100, "Hello")],
+            [Transition(1, 100, "Hello", "world.")],
+        )
         await db.close()
 
         db2 = await Database.connect(db_path)

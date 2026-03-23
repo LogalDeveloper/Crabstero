@@ -14,9 +14,35 @@
 
 """Async SQLite database access for Crabstero's persistent storage."""
 
-from typing import Self
+from typing import NamedTuple, Self
 
 import aiosqlite
+
+
+class StartWord(NamedTuple):
+    """A Markov chain starting word row."""
+
+    channel_id: int
+    user_id: int
+    word: str
+
+
+class Transition(NamedTuple):
+    """A Markov chain word transition row."""
+
+    channel_id: int
+    user_id: int
+    word: str
+    next_word: str
+
+
+class ChannelImage(NamedTuple):
+    """An image URL associated with a channel."""
+
+    channel_id: int
+    user_id: int
+    url: str
+
 
 # SQL statements for creating the database schema.
 _SCHEMA = """
@@ -107,15 +133,15 @@ class Database:
 
     async def add_markov_data(
         self,
-        start_words: list[tuple[int, int, str]],
-        transitions: list[tuple[int, int, str, str]],
+        start_words: list[StartWord],
+        transitions: list[Transition],
     ) -> None:
         """Insert Markov start words and transitions, then commit.
 
         Both inserts happen in a single transaction.
 
-        :param start_words: A list of (channel_id, user_id, word) tuples.
-        :param transitions: A list of (channel_id, user_id, word, next_word) tuples.
+        :param start_words: Starting word entries to insert.
+        :param transitions: Transition entries to insert.
         """
         if start_words:
             await self._connection.executemany(
@@ -136,16 +162,16 @@ class Database:
 
     async def remove_markov_data(
         self,
-        start_words: list[tuple[int, int, str]],
-        transitions: list[tuple[int, int, str, str]],
+        start_words: list[StartWord],
+        transitions: list[Transition],
     ) -> None:
         """Remove one matching row per entry from the Markov tables.
 
         Each entry removes at most one duplicate row, preserving remaining
         frequency weight.
 
-        :param start_words: A list of (channel_id, user_id, word) tuples.
-        :param transitions: A list of (channel_id, user_id, word, next_word) tuples.
+        :param start_words: Starting word entries to remove.
+        :param transitions: Transition entries to remove.
         """
         for channel_id, user_id, word in start_words:
             await self._connection.execute(
@@ -213,6 +239,8 @@ class Database:
         Weighted by occurrence frequency. A completing word is one whose last
         character is '.', '!', '?', or '§'.
 
+        The set of terminators must match ``markov._TERMINATORS``.
+
         :param channel_id: The Discord channel ID.
         :param word: The current word to find a completing transition for.
         :return: A random completing next word, or None if none exist.
@@ -228,10 +256,10 @@ class Database:
             row = await cursor.fetchone()
             return row[0] if row else None
 
-    async def add_images(self, images: list[tuple[int, int, str]]) -> None:
+    async def add_images(self, images: list[ChannelImage]) -> None:
         """Store image URLs for a given channel.
 
-        :param images: A list of (channel_id, user_id, url) tuples.
+        :param images: Image entries to insert.
         """
         if images:
             await self._connection.executemany(
@@ -242,13 +270,13 @@ class Database:
             )
             await self._connection.commit()
 
-    async def remove_images(self, images: list[tuple[int, int, str]]) -> None:
+    async def remove_images(self, images: list[ChannelImage]) -> None:
         """Remove one matching row per entry from the images table.
 
         Each entry removes at most one duplicate row, preserving remaining
         frequency weight.
 
-        :param images: A list of (channel_id, user_id, url) tuples.
+        :param images: Image entries to remove.
         """
         for channel_id, user_id, url in images:
             await self._connection.execute(

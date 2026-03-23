@@ -131,6 +131,8 @@ class MetricsServer:
     which handles compression and content negotiation automatically.
     """
 
+    __slots__ = ("_host", "_port", "_runner")
+
     def __init__(self, host: str, port: int) -> None:
         """Store the listen address.
 

@@ -26,7 +26,7 @@ from crabstero import metrics
 from crabstero.messages import ingest_message
 
 if TYPE_CHECKING:
-    from crabstero.bot import Crabstero
+    from crabstero.bot import Crabstero, IngestableChannel
     from crabstero.database import Database
 
 MAXIMUM_MESSAGES_PER_CHANNEL = (
@@ -48,7 +48,7 @@ def queue_channels_for_ingestion(guild: discord.Guild, bot: Crabstero) -> None:
 
 
 async def ingest_channel(
-    channel: discord.TextChannel | discord.VoiceChannel,
+    channel: IngestableChannel,
     db: Database,
 ) -> None:
     """Bulk-ingest the message history of a given channel.

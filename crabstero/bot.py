@@ -20,6 +20,7 @@ cog loading, ingestion worker pool, and graceful shutdown.
 
 import asyncio
 import logging
+from typing import override
 
 import discord
 from discord import app_commands
@@ -40,6 +41,8 @@ from crabstero.metrics import (
 from crabstero.tasks.ingestion import ingest_channel
 
 logger = logging.getLogger(__name__)
+
+type IngestableChannel = discord.TextChannel | discord.VoiceChannel
 
 
 class Crabstero(commands.Bot):
@@ -80,9 +83,7 @@ class Crabstero(commands.Bot):
         self._database_path = database_path
         self._ingestion_worker_count = ingestion_workers
         self._ingest_only = ingest_only
-        self._ingestion_queue: asyncio.Queue[
-            discord.TextChannel | discord.VoiceChannel
-        ] = asyncio.Queue()
+        self._ingestion_queue: asyncio.Queue[IngestableChannel] = asyncio.Queue()
         self._ingestion_workers: list[asyncio.Task[None]] = []
         self._db: Database | None = None
         self.ingest_cache = IngestCache()
@@ -92,7 +93,7 @@ class Crabstero(commands.Bot):
 
         DISCORD_LATENCY.set_function(lambda: self.latency)
         GUILD_COUNT.set_function(lambda: len(self.guilds))
-        INGESTION_BACKLOG.set_function(lambda: self._ingestion_queue.qsize())
+        INGESTION_BACKLOG.set_function(self._ingestion_queue.qsize)
 
         repo_url = "https://git.logal.dev/LogalDeveloper/Crabstero"
         self.http.user_agent = f"DiscordBot ({repo_url}, {crabstero_version})"
@@ -112,6 +113,7 @@ class Crabstero(commands.Bot):
         """Whether the bot is running in ingest-only mode."""
         return self._ingest_only
 
+    @override
     async def setup_hook(self) -> None:
         """Open the database, start ingestion workers, and load all cogs."""
         self._db = await Database.connect(self._database_path)
@@ -149,6 +151,7 @@ class Crabstero(commands.Bot):
                 logger.info("Slash command tree has changed, syncing with Discord.")
                 await self.tree.sync()
 
+    @override
     def dispatch(self, event: str, /, *args: object, **kwargs: object) -> None:
         """Dispatch an event, incrementing the events counter.
 
@@ -161,10 +164,12 @@ class Crabstero(commands.Bot):
         """Log that the bot has started successfully."""
         logger.info("Crabstero started!")
 
+    @override
     async def start(self, token: str = "", *, reconnect: bool = True) -> None:
         """Start the bot using the token provided at initialization."""
         await super().start(self._token, reconnect=reconnect)
 
+    @override
     async def close(self) -> None:
         """Cancel ingestion workers, close the database, and then the bot connection."""
         if self.is_closed():
@@ -181,9 +186,7 @@ class Crabstero(commands.Bot):
             await self._db.close()
         await super().close()
 
-    def queue_channel_for_ingestion(
-        self, channel: discord.TextChannel | discord.VoiceChannel
-    ) -> None:
+    def queue_channel_for_ingestion(self, channel: IngestableChannel) -> None:
         """Enqueue a single channel for background message history ingestion.
 
         :param channel: The channel to enqueue.

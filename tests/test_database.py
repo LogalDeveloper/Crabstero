@@ -293,6 +293,27 @@ class TestRemoveImages:
         await db.remove_images([])
 
 
+class TestTransactionRollback:
+    """Transaction rolls back all changes on error."""
+
+    async def test_error_rolls_back_insert(self, db: Database) -> None:
+        """An error during a transaction prevents partial data from persisting."""
+        with pytest.raises(RuntimeError, match="simulated"):
+            await self._insert_and_fail(db)
+        assert await db.get_random_start_word(1) is None
+
+    @staticmethod
+    async def _insert_and_fail(db: Database) -> None:
+        async with db._transaction():
+            await db._connection.execute(
+                "INSERT INTO markov_start_words"
+                " (channel_id, user_id, word)"
+                " VALUES (?, ?, ?)",
+                (1, 100, "should_not_persist"),
+            )
+            raise RuntimeError("simulated failure")
+
+
 class TestWriteDurability:
     """Writes persist across close and reopen."""
 

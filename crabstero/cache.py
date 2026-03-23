@@ -15,6 +15,7 @@
 """TTL cache for recently ingested messages, enabling uningest on delete."""
 
 import asyncio
+import contextlib
 import time
 from dataclasses import dataclass
 
@@ -101,12 +102,16 @@ class IngestCache:
         """Start the periodic background cleanup task."""
         if self._task is not None:
             return
-        self._task = asyncio.create_task(self._cleanup_loop())
+        self._task = asyncio.create_task(
+            self._cleanup_loop(), name="ingest-cache-cleanup"
+        )
 
-    def stop(self) -> None:
-        """Stop the periodic background cleanup task."""
+    async def stop(self) -> None:
+        """Stop the periodic background cleanup task and wait for it to finish."""
         if self._task is not None:
             self._task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._task
             self._task = None
 
     async def _cleanup_loop(self) -> None:

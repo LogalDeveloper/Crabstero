@@ -179,7 +179,7 @@ class Crabstero(commands.Bot):
             worker.cancel()
         await asyncio.gather(*self._ingestion_workers, return_exceptions=True)
         self._ingestion_workers.clear()
-        self.ingest_cache.stop()
+        await self.ingest_cache.stop()
         if self._metrics_server is not None:
             await self._metrics_server.stop()
         if self._db is not None:
@@ -195,8 +195,10 @@ class Crabstero(commands.Bot):
 
     def _start_ingestion_workers(self) -> None:
         """Spawn the fixed pool of ingestion worker tasks."""
-        for _ in range(self._ingestion_worker_count):
-            task = asyncio.create_task(self._ingestion_worker())
+        for i in range(self._ingestion_worker_count):
+            task = asyncio.create_task(
+                self._ingestion_worker(), name=f"ingestion-worker-{i}"
+            )
             self._ingestion_workers.append(task)
 
     async def _ingestion_worker(self) -> None:

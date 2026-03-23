@@ -113,6 +113,6 @@ class TestIngestCache:
         cache.put(1, entry)
         cache.start()
         await asyncio.sleep(0.05)
-        cache.stop()
+        await cache.stop()
         # Entry should have been cleaned up by the background task.
         assert cache.pop(1) is None

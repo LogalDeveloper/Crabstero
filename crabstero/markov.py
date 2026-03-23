@@ -34,17 +34,16 @@ if TYPE_CHECKING:
 DEFAULT_SENTENCE_END = "\u00a7"
 
 _TERMINATORS = frozenset({DEFAULT_SENTENCE_END, ".", "!", "?"})
-_MULTI_SPACE = re.compile(r" +")
 _SENTENCE_SPLIT = re.compile(r"(?<=[.!?]) ")
 
 
 def _normalize_whitespace(text: str) -> str:
-    """Collapse runs of spaces into single spaces and strip edges.
+    """Collapse runs of whitespace into single spaces and strip edges.
 
     :param text: The raw text to normalize.
     :return: The normalized text.
     """
-    return _MULTI_SPACE.sub(" ", text.strip())
+    return " ".join(text.split())
 
 
 def is_complete_sentence(sentence: str) -> bool:
@@ -70,7 +69,7 @@ def _split_sentences(paragraph: str) -> list[str]:
     """
     if not is_complete_sentence(paragraph):
         paragraph += DEFAULT_SENTENCE_END
-    normalized = _normalize_whitespace(paragraph.replace("\n", " "))
+    normalized = _normalize_whitespace(paragraph)
     return _SENTENCE_SPLIT.split(normalized)
 
 
@@ -84,7 +83,7 @@ def _tokenize_sentence(
     """
     if not is_complete_sentence(sentence):
         sentence += DEFAULT_SENTENCE_END
-    words = _normalize_whitespace(sentence).split()
+    words = sentence.split()
 
     start_words: list[str] = [words[0]] if len(words) >= 2 else []
     transitions: list[tuple[str, str]] = list(itertools.pairwise(words))

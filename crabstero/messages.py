@@ -35,7 +35,7 @@ if TYPE_CHECKING:
 
 # Copied from discordjs/discord-api-types:
 # https://github.com/discordjs/discord-api-types/blob/662cb0cb0ac9c6f9ad93e180849476714bfceb0c/globals.ts#L39
-_MENTION_PATTERN = re.compile(r"<@!?(?P<id>\d{17,20})>")
+_MENTION_PATTERN = re.compile(r"<@!?(\d{17,20})>")
 
 _EMBED_CHANCE_THRESHOLD = 95  # Out of 100; sends an embed ~5% of the time.
 
@@ -90,9 +90,7 @@ async def reply_to_message(db: Database, message: discord.Message) -> None:
     # Suppress all mentions by default; only ping users who opted in.
     allowed_user_ids: set[int] = set()
 
-    for match in _MENTION_PATTERN.finditer(body):
-        user_id = int(match.group("id"))
-
+    for user_id in {int(uid) for uid in _MENTION_PATTERN.findall(body)}:
         if await flags.is_flag_set(db, user_id, EntityType.USER, Flag.ALLOW_PINGS):
             allowed_user_ids.add(user_id)
 

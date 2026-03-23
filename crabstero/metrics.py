@@ -57,11 +57,19 @@ PINGME = Counter(
     "/pingme command outcomes",
     ["outcome"],
 )
+PINGME.labels(outcome="opted_in")
+PINGME.labels(outcome="opted_out")
+
 FORGETME = Counter(
     "crabstero_forgetme_total",
     "/forgetme command outcomes",
     ["outcome"],
 )
+FORGETME.labels(outcome="completed")
+FORGETME.labels(outcome="cancelled")
+FORGETME.labels(outcome="timeout")
+FORGETME.labels(outcome="already_forgotten")
+
 ERRORS = Counter(
     "crabstero_errors_total",
     "Unhandled exceptions by source",

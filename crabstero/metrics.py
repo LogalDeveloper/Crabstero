@@ -31,16 +31,11 @@ logger = logging.getLogger(__name__)
 
 _FAST_BUCKETS = (0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0)
 _SLOW_BUCKETS = (0.1, 0.5, 1.0, 5.0, 10.0, 30.0, 60.0, 120.0, 300.0, 600.0)
-_LENGTH_BUCKETS = (10, 50, 100, 200, 500, 750, 1000, 1500, 2000)
 _MESSAGES_BUCKETS = (100, 500, 1000, 5000, 10000, 25000, 50000)
 
 BUILD_INFO = Info("crabstero_build", "Build information")
 BUILD_INFO.info({"version": __version__})
 
-MESSAGES_INGESTED = Counter(
-    "crabstero_messages_ingested_total",
-    "Messages ingested into a Markov chain",
-)
 MESSAGES_UNINGESTED = Counter(
     "crabstero_messages_uningested_total",
     "Messages uningested from a Markov chain after deletion",
@@ -56,10 +51,6 @@ EMBEDS_GENERATED = Counter(
 MESSAGES_PROCESSED = Counter(
     "crabstero_messages_processed_total",
     "Messages seen by the listener",
-)
-CHANNELS_INGESTED = Counter(
-    "crabstero_channels_ingested_total",
-    "Channels fully ingested successfully",
 )
 PINGME = Counter(
     "crabstero_pingme_total",
@@ -110,14 +101,9 @@ GENERATION_DURATION = Histogram(
     "Time to generate a Markov response",
     buckets=_FAST_BUCKETS,
 )
-GENERATED_MESSAGE_LENGTH = Histogram(
-    "crabstero_generated_message_length_characters",
-    "Length of generated reply bodies in characters",
-    buckets=_LENGTH_BUCKETS,
-)
 CHANNEL_INGESTION_MESSAGES = Histogram(
     "crabstero_channel_ingestion_messages",
-    "Messages ingested per channel run",
+    "Messages iterated per channel ingestion run",
     buckets=_MESSAGES_BUCKETS,
 )
 

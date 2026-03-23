@@ -83,8 +83,7 @@ async def ingest_channel(
     metrics.CHANNEL_INGESTION_MESSAGES.observe(count)
 
     logger.info(
-        "[%s] Ingestion of channel history complete. %d messages ingested.",
+        "[%s] Ingestion of channel history complete. %d messages iterated.",
         channel.id,
         count,
     )
-    metrics.CHANNELS_INGESTED.inc()

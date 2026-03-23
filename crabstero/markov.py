@@ -163,15 +163,15 @@ async def generate(
     :param hard_limit: Character count to hard-cut the sentence at.
     :return: A new generated sentence.
     """
+    word = await db.get_random_start_word(channel_id)
+
+    if word is None:
+        return (
+            "There's not enough data to generate a message yet."
+            " Chat a bit more so I can learn how this channel talks!"
+        )
+
     with metrics.GENERATION_DURATION.time():
-        word = await db.get_random_start_word(channel_id)
-
-        if word is None:
-            return (
-                "There's not enough data to generate a message yet."
-                " Chat a bit more so I can learn how this channel talks!"
-            )
-
         parts: list[str] = [word]
         current_length = len(word)
 
@@ -201,7 +201,4 @@ async def generate(
             result = result[:hard_limit]
 
         # Strip the internal sentence-end marker so it never appears in output.
-        result = result.removesuffix(DEFAULT_SENTENCE_END)
-
-        metrics.GENERATED_MESSAGE_LENGTH.observe(len(result))
-        return result
+        return result.removesuffix(DEFAULT_SENTENCE_END)

@@ -172,8 +172,6 @@ async def ingest_message(
                 [ChannelImage(channel_id, user_id, url) for url in image_urls]
             )
 
-    metrics.MESSAGES_INGESTED.inc()
-
     if cache is not None:
         cache.put(
             message.id,

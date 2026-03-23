@@ -36,11 +36,9 @@ class TestMetricObjects:
         "name",
         [
             pytest.param("crabstero_build_info", id="build-info"),
-            pytest.param("crabstero_messages_ingested_total", id="messages-ingested"),
             pytest.param("crabstero_replies_sent_total", id="replies-sent"),
             pytest.param("crabstero_embeds_generated_total", id="embeds-generated"),
             pytest.param("crabstero_messages_processed_total", id="messages-processed"),
-            pytest.param("crabstero_channels_ingested_total", id="channels-ingested"),
             pytest.param("crabstero_pingme_total", id="pingme"),
             pytest.param("crabstero_forgetme_total", id="forgetme"),
             pytest.param("crabstero_errors_total", id="errors"),
@@ -57,10 +55,6 @@ class TestMetricObjects:
             ),
             pytest.param(
                 "crabstero_generation_duration_seconds", id="generation-duration"
-            ),
-            pytest.param(
-                "crabstero_generated_message_length_characters",
-                id="generated-message-length",
             ),
             pytest.param(
                 "crabstero_channel_ingestion_messages", id="channel-ingestion-messages"

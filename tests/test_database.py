@@ -78,10 +78,45 @@ class TestAddMarkovData:
         assert await db.get_random_start_word(1) == "Hello"
         assert await db.get_random_next_word(1, "Hello") == "world."
 
-    async def test_empty_lists_store_nothing(self, db: Database) -> None:
+    async def test_empty_lists_is_noop(self, db: Database) -> None:
         """Empty lists do not store any data."""
         await db.add_markov_data([], [])
         assert await db.get_random_start_word(1) is None
+
+
+class TestMarkovReadMethods:
+    """Markov read methods return None for out-of-scope or missing data."""
+
+    async def test_returns_none_when_empty(self, db: Database) -> None:
+        """Returns None when no data has been stored."""
+        assert await db.get_random_start_word(1) is None
+        assert await db.get_random_next_word(1, "nonexistent") is None
+        assert await db.get_random_completing_next_word(1, "nonexistent") is None
+
+    async def test_start_word_scoped_to_channel(self, db: Database) -> None:
+        """A start word in one channel is not returned for another channel."""
+        await db.add_markov_data([StartWord(1, 100, "Hello")], [])
+        assert await db.get_random_start_word(2) is None
+
+    async def test_next_word_scoped_to_channel(self, db: Database) -> None:
+        """A transition in one channel is not returned for another channel."""
+        await db.add_markov_data([], [Transition(1, 100, "Hello", "world.")])
+        assert await db.get_random_next_word(2, "Hello") is None
+
+    async def test_completing_next_word_scoped_to_channel(self, db: Database) -> None:
+        """Completing transition is not returned for another channel."""
+        await db.add_markov_data([], [Transition(1, 100, "Hello", "world.")])
+        assert await db.get_random_completing_next_word(2, "Hello") is None
+
+    async def test_next_word_scoped_to_word(self, db: Database) -> None:
+        """A transition for one word is not returned when querying a different word."""
+        await db.add_markov_data([], [Transition(1, 100, "Hello", "world.")])
+        assert await db.get_random_next_word(1, "Goodbye") is None
+
+    async def test_completing_next_word_scoped_to_word(self, db: Database) -> None:
+        """Completing transition is not returned for a different word."""
+        await db.add_markov_data([], [Transition(1, 100, "Hello", "world.")])
+        assert await db.get_random_completing_next_word(1, "Goodbye") is None
 
     @pytest.mark.parametrize(
         "completing_word",
@@ -113,73 +148,37 @@ class TestAddMarkovData:
         result = await db.get_random_completing_next_word(1, "Hello")
         assert result is None
 
+    async def test_start_word_pooled_across_users(self, db: Database) -> None:
+        """Start words from different users are visible in the same channel query."""
+        await db.add_markov_data(
+            [StartWord(1, 100, "Hello"), StartWord(1, 200, "Goodbye")], []
+        )
+        assert await db.get_random_start_word(1) in {"Hello", "Goodbye"}
 
-class TestMarkovReadMethods:
-    """Read behavior when no data has been stored."""
+    async def test_next_word_pooled_across_users(self, db: Database) -> None:
+        """Transitions from different users are visible in the same channel query."""
+        await db.add_markov_data(
+            [],
+            [
+                Transition(1, 100, "Hello", "world."),
+                Transition(1, 200, "Hello", "friend."),
+            ],
+        )
+        assert await db.get_random_next_word(1, "Hello") in {"world.", "friend."}
 
-    async def test_returns_none_when_empty(self, db: Database) -> None:
-        """Returns None for channels with no data."""
-        assert await db.get_random_start_word(999) is None
-        assert await db.get_random_next_word(1, "nonexistent") is None
-
-
-class TestImages:
-    """Image URL storage and random retrieval."""
-
-    async def test_add_and_retrieve(self, db: Database) -> None:
-        """Inserted image URL can be retrieved by channel."""
-        await db.add_images([ChannelImage(1, 100, "https://example.com/cat.png")])
-        result = await db.get_random_image(1)
-        assert result == "https://example.com/cat.png"
-
-    async def test_returns_none_when_empty(self, db: Database) -> None:
-        """Returns None for a channel with no images."""
-        result = await db.get_random_image(999)
-        assert result is None
-
-
-class TestFlags:
-    """Flag CRUD operations on entities."""
-
-    async def test_set_and_check(self, db: Database) -> None:
-        """A set flag is reported as set."""
-        await db.set_flag("channel", "123", "noReply")
-        assert await db.is_flag_set("channel", "123", "noReply") is True
-
-    async def test_unset_flag_is_false(self, db: Database) -> None:
-        """An unset flag is reported as not set."""
-        assert await db.is_flag_set("channel", "123", "noReply") is False
-
-    async def test_clear_flag(self, db: Database) -> None:
-        """A cleared flag is no longer reported as set."""
-        await db.set_flag("channel", "123", "noReply")
-        await db.clear_flag("channel", "123", "noReply")
-        assert await db.is_flag_set("channel", "123", "noReply") is False
-
-    async def test_set_idempotent(self, db: Database) -> None:
-        """Setting the same flag twice does not raise."""
-        await db.set_flag("channel", "123", "noReply")
-        await db.set_flag("channel", "123", "noReply")
-        assert await db.is_flag_set("channel", "123", "noReply") is True
-
-
-class TestChannelIngestion:
-    """Channel ingestion tracking."""
-
-    async def test_mark_and_check(self, db: Database) -> None:
-        """A marked channel is reported as ingested."""
-        await db.mark_channel_ingested(42)
-        assert await db.is_channel_ingested(42) is True
-
-    async def test_not_ingested_by_default(self, db: Database) -> None:
-        """Unmarked channels are not reported as ingested."""
-        assert await db.is_channel_ingested(42) is False
-
-    async def test_mark_idempotent(self, db: Database) -> None:
-        """Marking the same channel twice does not raise."""
-        await db.mark_channel_ingested(42)
-        await db.mark_channel_ingested(42)
-        assert await db.is_channel_ingested(42) is True
+    async def test_completing_next_word_pooled_across_users(self, db: Database) -> None:
+        """Completing transitions from different users are visible."""
+        await db.add_markov_data(
+            [],
+            [
+                Transition(1, 100, "Hello", "world."),
+                Transition(1, 200, "Hello", "friend."),
+            ],
+        )
+        assert await db.get_random_completing_next_word(1, "Hello") in {
+            "world.",
+            "friend.",
+        }
 
 
 class TestRemoveMarkovData:
@@ -247,9 +246,100 @@ class TestRemoveMarkovData:
         assert await db.get_random_next_word(1, "Hello") is None
         assert await db.get_random_next_word(2, "Hello") == "world."
 
+    async def test_start_word_removal_scoped_to_user(self, db: Database) -> None:
+        """Removing a start word for one user leaves another user."""
+        await db.add_markov_data(
+            [StartWord(1, 100, "Hello"), StartWord(1, 200, "Hello")], []
+        )
+        await db.remove_markov_data([StartWord(1, 100, "Hello")], [])
+        assert await db.get_random_start_word(1) == "Hello"
+
+    async def test_transition_removal_scoped_to_user(self, db: Database) -> None:
+        """Removing a transition for one user leaves another user."""
+        await db.add_markov_data(
+            [],
+            [
+                Transition(1, 100, "Hello", "world."),
+                Transition(1, 200, "Hello", "world."),
+            ],
+        )
+        await db.remove_markov_data([], [Transition(1, 100, "Hello", "world.")])
+        assert await db.get_random_next_word(1, "Hello") == "world."
+
+    async def test_start_word_removal_scoped_to_word(self, db: Database) -> None:
+        """Removing one start word leaves a different start word."""
+        await db.add_markov_data(
+            [StartWord(1, 100, "Hello"), StartWord(1, 100, "World")], []
+        )
+        await db.remove_markov_data([StartWord(1, 100, "Hello")], [])
+        assert await db.get_random_start_word(1) == "World"
+
+    async def test_transition_removal_scoped_to_word(self, db: Database) -> None:
+        """Removing one word's transition leaves another word's."""
+        await db.add_markov_data(
+            [],
+            [
+                Transition(1, 100, "Hello", "world."),
+                Transition(1, 100, "Goodbye", "world."),
+            ],
+        )
+        await db.remove_markov_data([], [Transition(1, 100, "Hello", "world.")])
+        assert await db.get_random_next_word(1, "Hello") is None
+        assert await db.get_random_next_word(1, "Goodbye") == "world."
+
+    async def test_transition_removal_scoped_to_next_word(self, db: Database) -> None:
+        """Removing one next_word leaves a different next_word."""
+        await db.add_markov_data(
+            [],
+            [
+                Transition(1, 100, "Hello", "world."),
+                Transition(1, 100, "Hello", "friend."),
+            ],
+        )
+        await db.remove_markov_data([], [Transition(1, 100, "Hello", "world.")])
+        assert await db.get_random_next_word(1, "Hello") == "friend."
+
     async def test_empty_lists_is_noop(self, db: Database) -> None:
         """Empty lists do not error."""
         await db.remove_markov_data([], [])
+
+
+class TestImages:
+    """Image URL storage and random retrieval."""
+
+    async def test_add_and_retrieve(self, db: Database) -> None:
+        """Inserted image URL can be retrieved by channel."""
+        await db.add_images([ChannelImage(1, 100, "https://example.com/cat.png")])
+        result = await db.get_random_image(1)
+        assert result == "https://example.com/cat.png"
+
+    async def test_returns_none_when_empty(self, db: Database) -> None:
+        """Returns None for a channel with no images."""
+        result = await db.get_random_image(999)
+        assert result is None
+
+    async def test_image_scoped_to_channel(self, db: Database) -> None:
+        """An image in one channel is not returned for another channel."""
+        await db.add_images([ChannelImage(1, 100, "https://example.com/cat.png")])
+        assert await db.get_random_image(2) is None
+
+    async def test_empty_list_is_noop(self, db: Database) -> None:
+        """Empty list does not store any data."""
+        await db.add_images([])
+        assert await db.get_random_image(1) is None
+
+    async def test_image_pooled_across_users(self, db: Database) -> None:
+        """Images from different users are visible in the same channel query."""
+        await db.add_images(
+            [
+                ChannelImage(1, 100, "https://example.com/a.png"),
+                ChannelImage(1, 200, "https://example.com/b.png"),
+            ]
+        )
+        assert await db.get_random_image(1) in {
+            "https://example.com/a.png",
+            "https://example.com/b.png",
+        }
 
 
 class TestRemoveImages:
@@ -285,6 +375,28 @@ class TestRemoveImages:
         assert await db.get_random_image(1) is None
         assert await db.get_random_image(2) == "https://example.com/a.png"
 
+    async def test_image_removal_scoped_to_user(self, db: Database) -> None:
+        """Removing an image for one user leaves another user."""
+        await db.add_images(
+            [
+                ChannelImage(1, 100, "https://example.com/a.png"),
+                ChannelImage(1, 200, "https://example.com/a.png"),
+            ]
+        )
+        await db.remove_images([ChannelImage(1, 100, "https://example.com/a.png")])
+        assert await db.get_random_image(1) == "https://example.com/a.png"
+
+    async def test_image_removal_scoped_to_url(self, db: Database) -> None:
+        """Removing one URL leaves a different URL for the same user."""
+        await db.add_images(
+            [
+                ChannelImage(1, 100, "https://example.com/a.png"),
+                ChannelImage(1, 100, "https://example.com/b.png"),
+            ]
+        )
+        await db.remove_images([ChannelImage(1, 100, "https://example.com/a.png")])
+        assert await db.get_random_image(1) == "https://example.com/b.png"
+
     async def test_no_match_is_noop(self, db: Database) -> None:
         """Removing a non-existent image does not raise."""
         await db.remove_images([ChannelImage(1, 100, "https://example.com/nope.png")])
@@ -292,6 +404,97 @@ class TestRemoveImages:
     async def test_empty_list_is_noop(self, db: Database) -> None:
         """Empty list does not error."""
         await db.remove_images([])
+
+
+class TestFlags:
+    """Flag CRUD operations on entities."""
+
+    async def test_set_and_check(self, db: Database) -> None:
+        """A set flag is reported as set."""
+        await db.set_flag("channel", "123", "noReply")
+        assert await db.is_flag_set("channel", "123", "noReply") is True
+
+    async def test_unset_flag_is_false(self, db: Database) -> None:
+        """An unset flag is reported as not set."""
+        assert await db.is_flag_set("channel", "123", "noReply") is False
+
+    async def test_clear_flag(self, db: Database) -> None:
+        """A cleared flag is no longer reported as set."""
+        await db.set_flag("channel", "123", "noReply")
+        await db.clear_flag("channel", "123", "noReply")
+        assert await db.is_flag_set("channel", "123", "noReply") is False
+
+    async def test_set_idempotent(self, db: Database) -> None:
+        """Setting the same flag twice does not raise."""
+        await db.set_flag("channel", "123", "noReply")
+        await db.set_flag("channel", "123", "noReply")
+        assert await db.is_flag_set("channel", "123", "noReply") is True
+
+    async def test_scoped_to_entity_id(self, db: Database) -> None:
+        """A flag set on one entity is not visible on another entity."""
+        await db.set_flag("channel", "123", "noReply")
+        assert await db.is_flag_set("channel", "456", "noReply") is False
+
+    async def test_scoped_to_entity_type(self, db: Database) -> None:
+        """A flag set on one entity type is not visible on another."""
+        await db.set_flag("channel", "123", "noReply")
+        assert await db.is_flag_set("user", "123", "noReply") is False
+
+    async def test_scoped_to_flag_name(self, db: Database) -> None:
+        """A flag set under one name is not visible under a different name."""
+        await db.set_flag("channel", "123", "noReply")
+        assert await db.is_flag_set("channel", "123", "noIngest") is False
+
+    async def test_clear_scoped_to_flag_name(self, db: Database) -> None:
+        """Clearing one flag leaves other flags on the same entity intact."""
+        await db.set_flag("channel", "123", "noReply")
+        await db.set_flag("channel", "123", "noIngest")
+        await db.clear_flag("channel", "123", "noReply")
+        assert await db.is_flag_set("channel", "123", "noIngest") is True
+
+    async def test_clear_scoped_to_entity_id(self, db: Database) -> None:
+        """Clearing a flag on one entity leaves another entity."""
+        await db.set_flag("channel", "123", "noReply")
+        await db.set_flag("channel", "456", "noReply")
+        await db.clear_flag("channel", "123", "noReply")
+        assert await db.is_flag_set("channel", "456", "noReply") is True
+
+    async def test_clear_scoped_to_entity_type(self, db: Database) -> None:
+        """Clearing a flag on one entity type leaves another type."""
+        await db.set_flag("channel", "123", "noReply")
+        await db.set_flag("user", "123", "noReply")
+        await db.clear_flag("channel", "123", "noReply")
+        assert await db.is_flag_set("user", "123", "noReply") is True
+
+    async def test_clear_unset_flag_is_noop(self, db: Database) -> None:
+        """Clearing a flag that was never set does not raise or affect other flags."""
+        await db.set_flag("channel", "123", "noReply")
+        await db.clear_flag("channel", "123", "noIngest")
+        assert await db.is_flag_set("channel", "123", "noReply") is True
+
+
+class TestChannelIngestion:
+    """Channel ingestion tracking."""
+
+    async def test_mark_and_check(self, db: Database) -> None:
+        """A marked channel is reported as ingested."""
+        await db.mark_channel_ingested(42)
+        assert await db.is_channel_ingested(42) is True
+
+    async def test_not_ingested_by_default(self, db: Database) -> None:
+        """Unmarked channels are not reported as ingested."""
+        assert await db.is_channel_ingested(42) is False
+
+    async def test_mark_idempotent(self, db: Database) -> None:
+        """Marking the same channel twice does not raise."""
+        await db.mark_channel_ingested(42)
+        await db.mark_channel_ingested(42)
+        assert await db.is_channel_ingested(42) is True
+
+    async def test_scoped_to_channel(self, db: Database) -> None:
+        """Marking one channel as ingested does not affect another channel."""
+        await db.mark_channel_ingested(42)
+        assert await db.is_channel_ingested(99) is False
 
 
 class TestTransactionRollback:
@@ -379,6 +582,31 @@ class TestForgetUser:
         assert await db.is_flag_set("user", "100", "noReply") is False
         assert await db.is_flag_set("user", "100", "allowPings") is False
         assert await db.is_flag_set("user", "100", Flag.NO_INGEST) is True
+
+    async def test_deletes_across_channels(self, db: Database) -> None:
+        """All user data is removed from every channel."""
+        await db.add_markov_data(
+            [StartWord(1, 100, "One"), StartWord(2, 100, "Two")],
+            [
+                Transition(1, 100, "One", "fish."),
+                Transition(2, 100, "Two", "fish."),
+            ],
+        )
+        await db.add_images(
+            [
+                ChannelImage(1, 100, "https://example.com/a.png"),
+                ChannelImage(2, 100, "https://example.com/b.png"),
+            ]
+        )
+
+        await db.forget_user(100, Flag.NO_INGEST)
+
+        assert await db.get_random_start_word(1) is None
+        assert await db.get_random_start_word(2) is None
+        assert await db.get_random_next_word(1, "One") is None
+        assert await db.get_random_next_word(2, "Two") is None
+        assert await db.get_random_image(1) is None
+        assert await db.get_random_image(2) is None
 
     async def test_noop_for_nonexistent_user(self, db: Database) -> None:
         """Forgetting a user with no data does not raise."""

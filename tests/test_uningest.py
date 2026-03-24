@@ -57,20 +57,6 @@ class TestIngestUningestCycle:
 
         assert await db.get_random_image(1) is None
 
-    def test_cache_round_trip(self) -> None:
-        """Cache put then pop returns the original entry."""
-        cache = IngestCache()
-        entry = CachedMessage(
-            channel_id=1,
-            user_id=100,
-            content="Hello world.",
-            embed_texts=["Title"],
-            image_urls=["https://example.com/cat.png"],
-        )
-        cache.put(12345, entry)
-        assert cache.pop(12345) is entry
-        assert cache.pop(12345) is None
-
     async def test_multi_sentence_round_trip(self, db: Database) -> None:
         """Multi-sentence ingest and uningest leaves the database clean."""
         text = "Hello world. Goodbye world! How are you?"
@@ -98,6 +84,15 @@ class TestIngestUningestCycle:
         assert await db.get_random_start_word(1) is None
         assert await db.get_random_start_word(2) == "Hello"
         assert await db.get_random_next_word(2, "Hello") == "world."
+
+    async def test_uningest_does_not_affect_other_users(self, db: Database) -> None:
+        """Uningesting for one user leaves another user's data."""
+        await ingest(db, 1, 100, "Hello world.")
+        await ingest(db, 1, 200, "Hello world.")
+        await uningest(db, 1, 100, "Hello world.")
+
+        assert await db.get_random_start_word(1) == "Hello"
+        assert await db.get_random_next_word(1, "Hello") == "world."
 
 
 class TestUningestRestoresState:

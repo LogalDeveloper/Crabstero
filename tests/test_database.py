@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from crabstero.database import ChannelImage, Database, StartWord, Transition
-from crabstero.flags import Flag
+from crabstero.flags import EntityType, Flag
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -411,66 +411,66 @@ class TestFlags:
 
     async def test_set_and_check(self, db: Database) -> None:
         """A set flag is reported as set."""
-        await db.set_flag("channel", "123", "noReply")
-        assert await db.is_flag_set("channel", "123", "noReply") is True
+        await db.set_flag(EntityType.CHANNEL, "123", Flag.NO_REPLY)
+        assert await db.is_flag_set(EntityType.CHANNEL, "123", Flag.NO_REPLY) is True
 
     async def test_unset_flag_is_false(self, db: Database) -> None:
         """An unset flag is reported as not set."""
-        assert await db.is_flag_set("channel", "123", "noReply") is False
+        assert await db.is_flag_set(EntityType.CHANNEL, "123", Flag.NO_REPLY) is False
 
     async def test_clear_flag(self, db: Database) -> None:
         """A cleared flag is no longer reported as set."""
-        await db.set_flag("channel", "123", "noReply")
-        await db.clear_flag("channel", "123", "noReply")
-        assert await db.is_flag_set("channel", "123", "noReply") is False
+        await db.set_flag(EntityType.CHANNEL, "123", Flag.NO_REPLY)
+        await db.clear_flag(EntityType.CHANNEL, "123", Flag.NO_REPLY)
+        assert await db.is_flag_set(EntityType.CHANNEL, "123", Flag.NO_REPLY) is False
 
     async def test_set_idempotent(self, db: Database) -> None:
         """Setting the same flag twice does not raise."""
-        await db.set_flag("channel", "123", "noReply")
-        await db.set_flag("channel", "123", "noReply")
-        assert await db.is_flag_set("channel", "123", "noReply") is True
+        await db.set_flag(EntityType.CHANNEL, "123", Flag.NO_REPLY)
+        await db.set_flag(EntityType.CHANNEL, "123", Flag.NO_REPLY)
+        assert await db.is_flag_set(EntityType.CHANNEL, "123", Flag.NO_REPLY) is True
 
     async def test_scoped_to_entity_id(self, db: Database) -> None:
         """A flag set on one entity is not visible on another entity."""
-        await db.set_flag("channel", "123", "noReply")
-        assert await db.is_flag_set("channel", "456", "noReply") is False
+        await db.set_flag(EntityType.CHANNEL, "123", Flag.NO_REPLY)
+        assert await db.is_flag_set(EntityType.CHANNEL, "456", Flag.NO_REPLY) is False
 
     async def test_scoped_to_entity_type(self, db: Database) -> None:
         """A flag set on one entity type is not visible on another."""
-        await db.set_flag("channel", "123", "noReply")
-        assert await db.is_flag_set("user", "123", "noReply") is False
+        await db.set_flag(EntityType.CHANNEL, "123", Flag.NO_REPLY)
+        assert await db.is_flag_set(EntityType.USER, "123", Flag.NO_REPLY) is False
 
     async def test_scoped_to_flag_name(self, db: Database) -> None:
         """A flag set under one name is not visible under a different name."""
-        await db.set_flag("channel", "123", "noReply")
-        assert await db.is_flag_set("channel", "123", "noIngest") is False
+        await db.set_flag(EntityType.CHANNEL, "123", Flag.NO_REPLY)
+        assert await db.is_flag_set(EntityType.CHANNEL, "123", Flag.NO_INGEST) is False
 
     async def test_clear_scoped_to_flag_name(self, db: Database) -> None:
         """Clearing one flag leaves other flags on the same entity intact."""
-        await db.set_flag("channel", "123", "noReply")
-        await db.set_flag("channel", "123", "noIngest")
-        await db.clear_flag("channel", "123", "noReply")
-        assert await db.is_flag_set("channel", "123", "noIngest") is True
+        await db.set_flag(EntityType.CHANNEL, "123", Flag.NO_REPLY)
+        await db.set_flag(EntityType.CHANNEL, "123", Flag.NO_INGEST)
+        await db.clear_flag(EntityType.CHANNEL, "123", Flag.NO_REPLY)
+        assert await db.is_flag_set(EntityType.CHANNEL, "123", Flag.NO_INGEST) is True
 
     async def test_clear_scoped_to_entity_id(self, db: Database) -> None:
         """Clearing a flag on one entity leaves another entity."""
-        await db.set_flag("channel", "123", "noReply")
-        await db.set_flag("channel", "456", "noReply")
-        await db.clear_flag("channel", "123", "noReply")
-        assert await db.is_flag_set("channel", "456", "noReply") is True
+        await db.set_flag(EntityType.CHANNEL, "123", Flag.NO_REPLY)
+        await db.set_flag(EntityType.CHANNEL, "456", Flag.NO_REPLY)
+        await db.clear_flag(EntityType.CHANNEL, "123", Flag.NO_REPLY)
+        assert await db.is_flag_set(EntityType.CHANNEL, "456", Flag.NO_REPLY) is True
 
     async def test_clear_scoped_to_entity_type(self, db: Database) -> None:
         """Clearing a flag on one entity type leaves another type."""
-        await db.set_flag("channel", "123", "noReply")
-        await db.set_flag("user", "123", "noReply")
-        await db.clear_flag("channel", "123", "noReply")
-        assert await db.is_flag_set("user", "123", "noReply") is True
+        await db.set_flag(EntityType.CHANNEL, "123", Flag.NO_REPLY)
+        await db.set_flag(EntityType.USER, "123", Flag.NO_REPLY)
+        await db.clear_flag(EntityType.CHANNEL, "123", Flag.NO_REPLY)
+        assert await db.is_flag_set(EntityType.USER, "123", Flag.NO_REPLY) is True
 
     async def test_clear_unset_flag_is_noop(self, db: Database) -> None:
         """Clearing a flag that was never set does not raise or affect other flags."""
-        await db.set_flag("channel", "123", "noReply")
-        await db.clear_flag("channel", "123", "noIngest")
-        assert await db.is_flag_set("channel", "123", "noReply") is True
+        await db.set_flag(EntityType.CHANNEL, "123", Flag.NO_REPLY)
+        await db.clear_flag(EntityType.CHANNEL, "123", Flag.NO_INGEST)
+        assert await db.is_flag_set(EntityType.CHANNEL, "123", Flag.NO_REPLY) is True
 
 
 class TestChannelIngestion:
@@ -528,15 +528,15 @@ class TestForgetUser:
             [Transition(1, 100, "Hello", "world.")],
         )
         await db.add_images([ChannelImage(1, 100, "https://example.com/a.png")])
-        await db.set_flag("user", "100", "allowPings")
+        await db.set_flag(EntityType.USER, "100", Flag.ALLOW_PINGS)
 
         await db.forget_user(100, Flag.NO_INGEST)
 
         assert await db.get_random_start_word(1) is None
         assert await db.get_random_next_word(1, "Hello") is None
         assert await db.get_random_image(1) is None
-        assert await db.is_flag_set("user", "100", "allowPings") is False
-        assert await db.is_flag_set("user", "100", Flag.NO_INGEST) is True
+        assert await db.is_flag_set(EntityType.USER, "100", Flag.ALLOW_PINGS) is False
+        assert await db.is_flag_set(EntityType.USER, "100", Flag.NO_INGEST) is True
 
     async def test_preserves_other_users(self, db: Database) -> None:
         """Data belonging to other users is not affected."""
@@ -553,35 +553,35 @@ class TestForgetUser:
                 ChannelImage(1, 200, "https://example.com/stay.png"),
             ]
         )
-        await db.set_flag("user", "200", "allowPings")
+        await db.set_flag(EntityType.USER, "200", Flag.ALLOW_PINGS)
 
         await db.forget_user(100, Flag.NO_INGEST)
 
         assert await db.get_random_start_word(1) == "Keep"
         assert await db.get_random_next_word(1, "Keep") == "this."
         assert await db.get_random_image(1) == "https://example.com/stay.png"
-        assert await db.is_flag_set("user", "200", "allowPings") is True
+        assert await db.is_flag_set(EntityType.USER, "200", Flag.ALLOW_PINGS) is True
 
     async def test_preserves_other_entity_type_flags(self, db: Database) -> None:
         """Flags on channels with the same entity ID are not affected."""
-        await db.set_flag("channel", "100", "noReply")
-        await db.set_flag("user", "100", "noReply")
+        await db.set_flag(EntityType.CHANNEL, "100", Flag.NO_REPLY)
+        await db.set_flag(EntityType.USER, "100", Flag.NO_REPLY)
 
         await db.forget_user(100, Flag.NO_INGEST)
 
-        assert await db.is_flag_set("channel", "100", "noReply") is True
-        assert await db.is_flag_set("user", "100", "noReply") is False
+        assert await db.is_flag_set(EntityType.CHANNEL, "100", Flag.NO_REPLY) is True
+        assert await db.is_flag_set(EntityType.USER, "100", Flag.NO_REPLY) is False
 
     async def test_clears_existing_flags_except_no_ingest(self, db: Database) -> None:
         """Existing user flags are cleared but noIngest remains."""
-        await db.set_flag("user", "100", "noReply")
-        await db.set_flag("user", "100", "allowPings")
+        await db.set_flag(EntityType.USER, "100", Flag.NO_REPLY)
+        await db.set_flag(EntityType.USER, "100", Flag.ALLOW_PINGS)
 
         await db.forget_user(100, Flag.NO_INGEST)
 
-        assert await db.is_flag_set("user", "100", "noReply") is False
-        assert await db.is_flag_set("user", "100", "allowPings") is False
-        assert await db.is_flag_set("user", "100", Flag.NO_INGEST) is True
+        assert await db.is_flag_set(EntityType.USER, "100", Flag.NO_REPLY) is False
+        assert await db.is_flag_set(EntityType.USER, "100", Flag.ALLOW_PINGS) is False
+        assert await db.is_flag_set(EntityType.USER, "100", Flag.NO_INGEST) is True
 
     async def test_deletes_across_channels(self, db: Database) -> None:
         """All user data is removed from every channel."""
@@ -611,7 +611,7 @@ class TestForgetUser:
     async def test_noop_for_nonexistent_user(self, db: Database) -> None:
         """Forgetting a user with no data does not raise."""
         await db.forget_user(999, Flag.NO_INGEST)
-        assert await db.is_flag_set("user", "999", Flag.NO_INGEST) is True
+        assert await db.is_flag_set(EntityType.USER, "999", Flag.NO_INGEST) is True
 
 
 class TestWriteDurability:

@@ -133,7 +133,9 @@ class TestUningestRestoresState:
         ],
     )
     async def test_uningest_restores_preexisting_data(
-        self, db: Database, text: str
+        self,
+        db: Database,
+        text: str,
     ) -> None:
         """Ingest then uningest preserves unrelated pre-existing data exactly."""
         await ingest(db, 99, 200, "Pre-existing data stays safe.")

@@ -58,6 +58,7 @@ class Crabstero(commands.Bot):
         self,
         token: str,
         database_path: str,
+        *,
         ingest_only: bool = False,
         metrics_address: tuple[str, int] | None = None,
     ) -> None:
@@ -104,7 +105,8 @@ class Crabstero(commands.Bot):
         :raises RuntimeError: If accessed before :meth:`setup_hook` has run.
         """
         if self._db is None:
-            raise RuntimeError("Database is not initialized")
+            msg = "Database is not initialized"
+            raise RuntimeError(msg)
         return self._db
 
     @property
@@ -123,7 +125,11 @@ class Crabstero(commands.Bot):
             await server.start()
             self._metrics_server = server
 
-        from crabstero.listeners import interaction, message, server_events
+        from crabstero.listeners import (  # noqa: PLC0415
+            interaction,
+            message,
+            server_events,
+        )
 
         if not self._ingest_only:
             await interaction.setup(self)
@@ -133,7 +139,8 @@ class Crabstero(commands.Bot):
 
         @self.tree.error
         async def on_app_command_error(
-            interaction: discord.Interaction, error: AppCommandError
+            interaction: discord.Interaction,
+            error: AppCommandError,
         ) -> None:
             original = (
                 error.original if isinstance(error, CommandInvokeError) else error
@@ -203,14 +210,18 @@ class Crabstero(commands.Bot):
 
     @override
     async def on_error(
-        self, event_method: str, /, *args: object, **kwargs: object
+        self,
+        event_method: str,
+        /,
+        *args: object,
+        **kwargs: object,
     ) -> None:
         """Increment the global error counter for event listener exceptions.
 
         :param event_method: The name of the event that raised the exception.
         """
         ERRORS.labels(source=event_method).inc()
-        logger.error("Unhandled exception in %s.", event_method, exc_info=True)
+        logger.error("Unhandled exception in %s.", event_method, exc_info=True)  # noqa: LOG014
 
     async def on_ready(self) -> None:
         """Log that the bot has started successfully."""
@@ -250,7 +261,8 @@ class Crabstero(commands.Bot):
         if channel.id in self._ingestion_tasks:
             return
         task = asyncio.create_task(
-            self._ingest_one(channel), name=f"ingest-{channel.id}"
+            self._ingest_one(channel),
+            name=f"ingest-{channel.id}",
         )
         self._ingestion_tasks[channel.id] = task
         task.add_done_callback(lambda t: self._on_ingestion_done(channel.id, t))

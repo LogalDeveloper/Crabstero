@@ -103,7 +103,8 @@ class IngestCache:
         if self._task is not None:
             return
         self._task = asyncio.create_task(
-            self._cleanup_loop(), name="ingest-cache-cleanup"
+            self._cleanup_loop(),
+            name="ingest-cache-cleanup",
         )
 
     async def stop(self) -> None:

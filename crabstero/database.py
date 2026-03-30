@@ -261,7 +261,9 @@ class Database:
             return row[0] if row else None
 
     async def get_random_completing_next_word(
-        self, channel_id: int, word: str
+        self,
+        channel_id: int,
+        word: str,
     ) -> str | None:
         """Return a random sentence-ending next word for a given word in a channel.
 
@@ -352,7 +354,10 @@ class Database:
             )
 
     async def clear_flag(
-        self, entity_type: str, entity_id: str, flag_name: str
+        self,
+        entity_type: str,
+        entity_id: str,
+        flag_name: str,
     ) -> None:
         """Clear a flag on a given entity. If the flag is not set, this is a no-op.
 
@@ -370,7 +375,10 @@ class Database:
             )
 
     async def is_flag_set(
-        self, entity_type: str, entity_id: str, flag_name: str
+        self,
+        entity_type: str,
+        entity_id: str,
+        flag_name: str,
     ) -> bool:
         """Check whether a flag is set on a given entity.
 

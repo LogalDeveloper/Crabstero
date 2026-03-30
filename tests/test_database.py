@@ -42,7 +42,7 @@ class TestConnect:
     async def test_schema_creates_tables(self, db: Database) -> None:
         """All expected tables exist after connect."""
         async with db._connection.execute(
-            "SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name"
+            "SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name",
         ) as cursor:
             tables = [row[0] for row in await cursor.fetchall()]
         assert tables == [
@@ -128,7 +128,9 @@ class TestMarkovReadMethods:
         ],
     )
     async def test_completing_word_filters_punctuation(
-        self, db: Database, completing_word: str
+        self,
+        db: Database,
+        completing_word: str,
     ) -> None:
         """get_random_completing_next_word only returns sentence-ending words."""
         await db.add_markov_data(
@@ -151,7 +153,8 @@ class TestMarkovReadMethods:
     async def test_start_word_pooled_across_users(self, db: Database) -> None:
         """Start words from different users are visible in the same channel query."""
         await db.add_markov_data(
-            [StartWord(1, 100, "Hello"), StartWord(1, 200, "Goodbye")], []
+            [StartWord(1, 100, "Hello"), StartWord(1, 200, "Goodbye")],
+            [],
         )
         assert await db.get_random_start_word(1) in {"Hello", "Goodbye"}
 
@@ -187,7 +190,8 @@ class TestRemoveMarkovData:
     async def test_removes_one_start_word(self, db: Database) -> None:
         """Removes exactly one matching start word row."""
         await db.add_markov_data(
-            [StartWord(1, 100, "Hello"), StartWord(1, 100, "Hello")], []
+            [StartWord(1, 100, "Hello"), StartWord(1, 100, "Hello")],
+            [],
         )
         await db.remove_markov_data([StartWord(1, 100, "Hello")], [])
         # One copy should remain.
@@ -227,7 +231,8 @@ class TestRemoveMarkovData:
     async def test_start_word_removal_scoped_to_channel(self, db: Database) -> None:
         """Removing a start word in one channel leaves another channel intact."""
         await db.add_markov_data(
-            [StartWord(1, 100, "Hello"), StartWord(2, 200, "Hello")], []
+            [StartWord(1, 100, "Hello"), StartWord(2, 200, "Hello")],
+            [],
         )
         await db.remove_markov_data([StartWord(1, 100, "Hello")], [])
         assert await db.get_random_start_word(1) is None
@@ -249,7 +254,8 @@ class TestRemoveMarkovData:
     async def test_start_word_removal_scoped_to_user(self, db: Database) -> None:
         """Removing a start word for one user leaves another user."""
         await db.add_markov_data(
-            [StartWord(1, 100, "Hello"), StartWord(1, 200, "Hello")], []
+            [StartWord(1, 100, "Hello"), StartWord(1, 200, "Hello")],
+            [],
         )
         await db.remove_markov_data([StartWord(1, 100, "Hello")], [])
         assert await db.get_random_start_word(1) == "Hello"
@@ -269,7 +275,8 @@ class TestRemoveMarkovData:
     async def test_start_word_removal_scoped_to_word(self, db: Database) -> None:
         """Removing one start word leaves a different start word."""
         await db.add_markov_data(
-            [StartWord(1, 100, "Hello"), StartWord(1, 100, "World")], []
+            [StartWord(1, 100, "Hello"), StartWord(1, 100, "World")],
+            [],
         )
         await db.remove_markov_data([StartWord(1, 100, "Hello")], [])
         assert await db.get_random_start_word(1) == "World"
@@ -334,7 +341,7 @@ class TestImages:
             [
                 ChannelImage(1, 100, "https://example.com/a.png"),
                 ChannelImage(1, 200, "https://example.com/b.png"),
-            ]
+            ],
         )
         assert await db.get_random_image(1) in {
             "https://example.com/a.png",
@@ -351,7 +358,7 @@ class TestRemoveImages:
             [
                 ChannelImage(1, 100, "https://example.com/a.png"),
                 ChannelImage(1, 100, "https://example.com/a.png"),
-            ]
+            ],
         )
         await db.remove_images([ChannelImage(1, 100, "https://example.com/a.png")])
         # One copy should remain.
@@ -369,7 +376,7 @@ class TestRemoveImages:
             [
                 ChannelImage(1, 100, "https://example.com/a.png"),
                 ChannelImage(2, 200, "https://example.com/a.png"),
-            ]
+            ],
         )
         await db.remove_images([ChannelImage(1, 100, "https://example.com/a.png")])
         assert await db.get_random_image(1) is None
@@ -381,7 +388,7 @@ class TestRemoveImages:
             [
                 ChannelImage(1, 100, "https://example.com/a.png"),
                 ChannelImage(1, 200, "https://example.com/a.png"),
-            ]
+            ],
         )
         await db.remove_images([ChannelImage(1, 100, "https://example.com/a.png")])
         assert await db.get_random_image(1) == "https://example.com/a.png"
@@ -392,7 +399,7 @@ class TestRemoveImages:
             [
                 ChannelImage(1, 100, "https://example.com/a.png"),
                 ChannelImage(1, 100, "https://example.com/b.png"),
-            ]
+            ],
         )
         await db.remove_images([ChannelImage(1, 100, "https://example.com/a.png")])
         assert await db.get_random_image(1) == "https://example.com/b.png"
@@ -515,7 +522,8 @@ class TestTransactionRollback:
                 " VALUES (?, ?, ?)",
                 (1, 100, "should_not_persist"),
             )
-            raise RuntimeError("simulated failure")
+            msg = "simulated failure"
+            raise RuntimeError(msg)
 
 
 class TestForgetUser:
@@ -551,7 +559,7 @@ class TestForgetUser:
             [
                 ChannelImage(1, 100, "https://example.com/gone.png"),
                 ChannelImage(1, 200, "https://example.com/stay.png"),
-            ]
+            ],
         )
         await db.set_flag(EntityType.USER, "200", Flag.ALLOW_PINGS)
 
@@ -596,7 +604,7 @@ class TestForgetUser:
             [
                 ChannelImage(1, 100, "https://example.com/a.png"),
                 ChannelImage(2, 100, "https://example.com/b.png"),
-            ]
+            ],
         )
 
         await db.forget_user(100, Flag.NO_INGEST)

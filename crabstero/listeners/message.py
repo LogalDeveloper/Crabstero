@@ -49,7 +49,8 @@ class MessageCog(commands.Cog):
         channel = message.channel
 
         if not isinstance(
-            channel, (discord.TextChannel, discord.Thread, discord.VoiceChannel)
+            channel,
+            (discord.TextChannel, discord.Thread, discord.VoiceChannel),
         ):
             return
 
@@ -61,7 +62,8 @@ class MessageCog(commands.Cog):
         if self.bot.ingest_only:
             # In ingest-only mode, never reply — only ingest eligible messages.
             if message.type == discord.MessageType.default and not isinstance(
-                channel, discord.Thread
+                channel,
+                discord.Thread,
             ):
                 await ingest_message(self.bot.db, message, self.bot.ingest_cache)
             return
@@ -72,13 +74,15 @@ class MessageCog(commands.Cog):
 
         # Only ingest non-thread messages; threads share their parent channel's chain.
         if message.type == discord.MessageType.default and not isinstance(
-            channel, discord.Thread
+            channel,
+            discord.Thread,
         ):
             await ingest_message(self.bot.db, message, self.bot.ingest_cache)
 
     @commands.Cog.listener()
     async def on_raw_message_delete(
-        self, payload: discord.RawMessageDeleteEvent
+        self,
+        payload: discord.RawMessageDeleteEvent,
     ) -> None:
         """Uningest a recently ingested message when it is deleted.
 
@@ -88,7 +92,8 @@ class MessageCog(commands.Cog):
 
     @commands.Cog.listener()
     async def on_raw_bulk_message_delete(
-        self, payload: discord.RawBulkMessageDeleteEvent
+        self,
+        payload: discord.RawBulkMessageDeleteEvent,
     ) -> None:
         """Uningest recently ingested messages when they are bulk-deleted.
 

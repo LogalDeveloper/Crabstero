@@ -148,7 +148,8 @@ class MetricsServer:
     async def start(self) -> None:
         """Create the aiohttp application and start listening."""
         if self._runner is not None:
-            raise RuntimeError("Metrics server is already running")
+            msg = "Metrics server is already running"
+            raise RuntimeError(msg)
         app = web.Application()
         app.router.add_get("/metrics", make_aiohttp_handler())
         self._runner = web.AppRunner(app)

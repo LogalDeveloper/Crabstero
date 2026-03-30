@@ -17,6 +17,7 @@
 Tests cover metric object registration and the MetricsServer HTTP endpoint.
 """
 
+from http import HTTPStatus
 from typing import TYPE_CHECKING
 
 import aiohttp
@@ -54,14 +55,17 @@ class TestMetricObjects:
                 id="channel-ingestion-duration",
             ),
             pytest.param(
-                "crabstero_generation_duration_seconds", id="generation-duration"
+                "crabstero_generation_duration_seconds",
+                id="generation-duration",
             ),
             pytest.param(
-                "crabstero_channel_ingestion_messages", id="channel-ingestion-messages"
+                "crabstero_channel_ingestion_messages",
+                id="channel-ingestion-messages",
             ),
             pytest.param("crabstero_discord_events_total", id="discord-events"),
             pytest.param(
-                "crabstero_messages_uningested_total", id="messages-uningested"
+                "crabstero_messages_uningested_total",
+                id="messages-uningested",
             ),
         ],
     )
@@ -89,16 +93,17 @@ class TestMetricsServer:
             aiohttp.ClientSession() as session,
             session.get(f"http://127.0.0.1:{metrics_server.port}/metrics") as resp,
         ):
-            assert resp.status == 200
+            assert resp.status == HTTPStatus.OK
             body = await resp.text()
             assert "crabstero_build_info" in body
 
     async def test_non_metrics_path_returns_404(
-        self, metrics_server: MetricsServer
+        self,
+        metrics_server: MetricsServer,
     ) -> None:
         """GET on an unknown path returns 404."""
         async with (
             aiohttp.ClientSession() as session,
             session.get(f"http://127.0.0.1:{metrics_server.port}/notfound") as resp,
         ):
-            assert resp.status == 404
+            assert resp.status == HTTPStatus.NOT_FOUND

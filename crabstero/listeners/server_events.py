@@ -55,7 +55,8 @@ class ServerEventsCog(commands.Cog):
         logger.info('Joined new server! (Name: "%s" | ID: %s)', guild.name, guild.id)
 
         embed = discord.Embed(
-            title="Joined New Server", color=discord.Color.from_rgb(255, 165, 0)
+            title="Joined New Server",
+            color=discord.Color.from_rgb(255, 165, 0),
         )
         embed.add_field(
             name=f"{guild.name} ({guild.id})",
@@ -84,7 +85,9 @@ class ServerEventsCog(commands.Cog):
 
     @commands.Cog.listener()
     async def on_guild_role_update(
-        self, before: discord.Role, after: discord.Role
+        self,
+        before: discord.Role,
+        after: discord.Role,
     ) -> None:
         """Queue all text channels for ingestion when role permissions change.
 
@@ -101,7 +104,9 @@ class ServerEventsCog(commands.Cog):
 
     @commands.Cog.listener()
     async def on_guild_channel_update(
-        self, before: discord.abc.GuildChannel, after: discord.abc.GuildChannel
+        self,
+        before: discord.abc.GuildChannel,
+        after: discord.abc.GuildChannel,
     ) -> None:
         """Queue all text channels for ingestion on permission change.
 

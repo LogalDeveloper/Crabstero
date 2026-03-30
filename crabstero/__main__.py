@@ -106,7 +106,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         host, sep, port_str = args.listen_metrics.rpartition(":")
         if not sep or not host:
             parser.error(
-                "--listen-metrics must be in HOST:PORT format (e.g. 127.0.0.1:9090)"
+                "--listen-metrics must be in HOST:PORT format (e.g. 127.0.0.1:9090)",
             )
         try:
             args.listen_metrics = (host, int(port_str))
@@ -117,7 +117,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         parser.error(
             "a Discord bot token is required via --token,"
             " the TOKEN environment variable,"
-            " or a systemd credential named 'token'"
+            " or a systemd credential named 'token'",
         )
 
     return args

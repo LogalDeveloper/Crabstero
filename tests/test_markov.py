@@ -53,7 +53,7 @@ class TestIsCompleteSentence:
             pytest.param("Hello,", False, id="comma"),
         ],
     )
-    def test_detection(self, sentence: str, expected: bool) -> None:
+    def test_detection(self, sentence: str, expected: bool) -> None:  # noqa: FBT001
         """Correctly identifies sentence completeness."""
         assert is_complete_sentence(sentence) is expected
 
@@ -147,7 +147,9 @@ class TestIngestParagraph:
         ],
     )
     async def test_empty_input_stores_nothing(
-        self, db: Database, paragraph: str
+        self,
+        db: Database,
+        paragraph: str,
     ) -> None:
         """Empty or whitespace-only input does not store any data."""
         await ingest(db, 1, 100, paragraph)
@@ -260,13 +262,15 @@ class TestGenerate:
         assert result == "A B C"
 
     async def test_soft_limit_falls_back_to_regular_next_word(
-        self, db: Database
+        self,
+        db: Database,
     ) -> None:
         """After soft_limit, falls back when no completing word exists."""
         # "A" -> "B" (no completing transition). Past soft_limit,
         # get_random_completing_next_word returns None, falls back to "B".
         await db.add_markov_data(
-            [StartWord(1, 100, "A")], [Transition(1, 100, "A", "B")]
+            [StartWord(1, 100, "A")],
+            [Transition(1, 100, "A", "B")],
         )
 
         result = await generate(db, 1, soft_limit=1, hard_limit=1000)

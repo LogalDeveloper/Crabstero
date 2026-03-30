@@ -79,7 +79,10 @@ async def reply_to_message(db: Database, message: discord.Message) -> None:
         embed = discord.Embed(
             title=await markov.generate(db, channel_id, soft_limit=200, hard_limit=300),
             description=await markov.generate(
-                db, channel_id, soft_limit=300, hard_limit=500
+                db,
+                channel_id,
+                soft_limit=300,
+                hard_limit=500,
             ),
         )
 
@@ -117,8 +120,30 @@ async def reply_to_message(db: Database, message: discord.Message) -> None:
     metrics.REPLIES_SENT.inc()
 
 
+def _extract_embed_data(
+    embeds: list[discord.Embed],
+) -> tuple[list[str], list[str]]:
+    """Extract text and image URLs from message embeds.
+
+    :param embeds: The embeds to process.
+    :return: A tuple of (texts, image_urls).
+    """
+    texts: list[str] = []
+    image_urls: list[str] = []
+    for embed in embeds:
+        if embed.title:
+            texts.append(embed.title)
+        if embed.description:
+            texts.append(embed.description)
+        if embed.image and embed.image.url:
+            image_urls.append(embed.image.url)
+    return texts, image_urls
+
+
 async def ingest_message(
-    db: Database, message: discord.Message, cache: IngestCache | None = None
+    db: Database,
+    message: discord.Message,
+    cache: IngestCache | None = None,
 ) -> None:
     """Ingest a given message into its channel's Markov chain.
 
@@ -150,26 +175,18 @@ async def ingest_message(
     if not message.content and not message.embeds:
         return
 
-    embed_texts: list[str] = []
-    image_urls: list[str] = []
+    embed_texts, image_urls = _extract_embed_data(message.embeds)
 
     with metrics.MESSAGE_INGESTION_DURATION.time():
         if message.content:
             await markov.ingest(db, channel_id, user_id, message.content)
 
-        for embed in message.embeds:
-            if embed.title:
-                embed_texts.append(embed.title)
-                await markov.ingest(db, channel_id, user_id, embed.title)
-            if embed.description:
-                embed_texts.append(embed.description)
-                await markov.ingest(db, channel_id, user_id, embed.description)
-            if embed.image and embed.image.url:
-                image_urls.append(embed.image.url)
+        for text in embed_texts:
+            await markov.ingest(db, channel_id, user_id, text)
 
         if image_urls:
             await db.add_images(
-                [ChannelImage(channel_id, user_id, url) for url in image_urls]
+                [ChannelImage(channel_id, user_id, url) for url in image_urls],
             )
 
     if cache is not None:
@@ -210,7 +227,7 @@ async def uningest_message(db: Database, cache: IngestCache, message_id: int) ->
             [
                 ChannelImage(entry.channel_id, entry.user_id, url)
                 for url in entry.image_urls
-            ]
+            ],
         )
 
     metrics.MESSAGES_UNINGESTED.inc()

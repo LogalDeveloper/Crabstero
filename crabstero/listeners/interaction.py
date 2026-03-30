@@ -39,7 +39,10 @@ class ForgetMeView(TrackedView):
     """Confirmation view with Confirm/Cancel buttons for /forgetme."""
 
     def __init__(
-        self, user_id: int, db: Database, interaction: discord.Interaction
+        self,
+        user_id: int,
+        db: Database,
+        interaction: discord.Interaction,
     ) -> None:
         """Create a new ForgetMeView.
 
@@ -64,12 +67,14 @@ class ForgetMeView(TrackedView):
 
     @discord.ui.button(label="Confirm", style=discord.ButtonStyle.danger)
     async def confirm(
-        self, interaction: discord.Interaction, button: discord.ui.Button[ForgetMeView]
+        self,
+        interaction: discord.Interaction,
+        _button: discord.ui.Button[ForgetMeView],
     ) -> None:
         """Delete all user data, clear flags, and set noIngest.
 
         :param interaction: The interaction event.
-        :param button: The button that was pressed.
+        :param _button: The button that was pressed.
         """
         self._responded = True
         await self._db.forget_user(self._user_id, Flag.NO_INGEST)
@@ -85,12 +90,14 @@ class ForgetMeView(TrackedView):
 
     @discord.ui.button(label="Cancel", style=discord.ButtonStyle.secondary)
     async def cancel(
-        self, interaction: discord.Interaction, button: discord.ui.Button[ForgetMeView]
+        self,
+        interaction: discord.Interaction,
+        _button: discord.ui.Button[ForgetMeView],
     ) -> None:
         """Cancel the /forgetme action.
 
         :param interaction: The interaction event.
-        :param button: The button that was pressed.
+        :param _button: The button that was pressed.
         """
         self._responded = True
         metrics.FORGETME.labels(outcome="cancelled").inc()
@@ -145,10 +152,16 @@ class InteractionCog(commands.Cog):
         :param interaction: The interaction event.
         """
         if await flags.is_flag_set(
-            self.bot.db, interaction.user, EntityType.USER, Flag.ALLOW_PINGS
+            self.bot.db,
+            interaction.user,
+            EntityType.USER,
+            Flag.ALLOW_PINGS,
         ):
             await flags.clear_flag(
-                self.bot.db, interaction.user, EntityType.USER, Flag.ALLOW_PINGS
+                self.bot.db,
+                interaction.user,
+                EntityType.USER,
+                Flag.ALLOW_PINGS,
             )
             metrics.PINGME.labels(outcome="opted_out").inc()
             await interaction.response.send_message(
@@ -159,7 +172,10 @@ class InteractionCog(commands.Cog):
             )
         else:
             await flags.set_flag(
-                self.bot.db, interaction.user, EntityType.USER, Flag.ALLOW_PINGS
+                self.bot.db,
+                interaction.user,
+                EntityType.USER,
+                Flag.ALLOW_PINGS,
             )
             metrics.PINGME.labels(outcome="opted_in").inc()
             await interaction.response.send_message(
@@ -179,7 +195,10 @@ class InteractionCog(commands.Cog):
         :param interaction: The interaction event.
         """
         if await flags.is_flag_set(
-            self.bot.db, interaction.user, EntityType.USER, Flag.NO_INGEST
+            self.bot.db,
+            interaction.user,
+            EntityType.USER,
+            Flag.NO_INGEST,
         ):
             metrics.FORGETME.labels(outcome="already_forgotten").inc()
             await interaction.response.send_message(

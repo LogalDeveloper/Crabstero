@@ -73,6 +73,9 @@ def _split_sentences(paragraph: str) -> list[str]:
     return _SENTENCE_SPLIT.split(normalized)
 
 
+_MIN_WORDS_FOR_START = 2
+
+
 def _tokenize_sentence(
     sentence: str,
 ) -> tuple[list[str], list[tuple[str, str]]]:
@@ -85,7 +88,7 @@ def _tokenize_sentence(
         sentence += DEFAULT_SENTENCE_END
     words = sentence.split()
 
-    start_words: list[str] = [words[0]] if len(words) >= 2 else []
+    start_words: list[str] = [words[0]] if len(words) >= _MIN_WORDS_FOR_START else []
     transitions: list[tuple[str, str]] = list(itertools.pairwise(words))
     return start_words, transitions
 
@@ -106,7 +109,10 @@ async def ingest(db: Database, channel_id: int, user_id: int, paragraph: str) ->
 
 
 async def _ingest_sentence(
-    db: Database, channel_id: int, user_id: int, sentence: str
+    db: Database,
+    channel_id: int,
+    user_id: int,
+    sentence: str,
 ) -> None:
     """Ingest a single sentence into the Markov chain for a given channel.
 
@@ -137,7 +143,10 @@ async def uningest(db: Database, channel_id: int, user_id: int, paragraph: str) 
 
 
 async def _uningest_sentence(
-    db: Database, channel_id: int, user_id: int, sentence: str
+    db: Database,
+    channel_id: int,
+    user_id: int,
+    sentence: str,
 ) -> None:
     """Remove a single sentence's Markov data from the chain.
 
@@ -153,7 +162,10 @@ async def _uningest_sentence(
 
 
 async def generate(
-    db: Database, channel_id: int, soft_limit: int = 750, hard_limit: int = 1000
+    db: Database,
+    channel_id: int,
+    soft_limit: int = 750,
+    hard_limit: int = 1000,
 ) -> str:
     """Generate a new sentence from previously ingested words for a channel.
 

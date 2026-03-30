@@ -95,7 +95,9 @@ class TestReadCredential:
     """Systemd credential file reading."""
 
     def test_reads_credential_file(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Reads and strips the credential value from the file."""
         (tmp_path / "mytoken").write_text("  secret123  \n")
@@ -108,7 +110,9 @@ class TestReadCredential:
         assert _read_credential("anything") is None
 
     def test_returns_none_for_missing_file(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Returns None when the credential file does not exist."""
         monkeypatch.setenv("CREDENTIALS_DIRECTORY", str(tmp_path))

@@ -22,12 +22,11 @@ from crabstero.database import Database
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
-    from pathlib import Path
 
 
 @pytest.fixture
-async def db(tmp_path: Path) -> AsyncGenerator[Database]:
-    """Yield a Database backed by a temporary SQLite file."""
-    database = await Database.connect(str(tmp_path / "test.db"))
+async def db() -> AsyncGenerator[Database]:
+    """Yield a Database backed by an in-memory SQLite database."""
+    database = await Database.connect(":memory:")
     yield database
     await database.close()

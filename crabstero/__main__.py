@@ -19,11 +19,12 @@ fallbacks for --token and --database-path.
 """
 
 import argparse
-import asyncio
 import logging
 import os
 import signal
 from pathlib import Path
+
+import uvloop
 
 from crabstero import __version__ as crabstero_version
 from crabstero.bot import Crabstero
@@ -150,7 +151,7 @@ def main() -> None:
     signal.signal(signal.SIGTERM, signal.default_int_handler)
 
     try:
-        asyncio.run(_run())
+        uvloop.run(_run())
     except KeyboardInterrupt:
         logger.info("Interrupted.")
 

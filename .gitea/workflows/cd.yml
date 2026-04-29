@@ -8,6 +8,9 @@ permissions:
   contents: read
   # packages: write  # not yet supported by Gitea
 
+env:
+  UV_PYTHON_DOWNLOADS: never
+
 jobs:
   publish:
     name: Publish
@@ -18,14 +21,8 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Cache uv packages
-        uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
-        with:
-          path: ~/.cache/uv
-          key: uv-${{ hashFiles('uv.lock') }}
-
       - name: Install dependencies
-        run: uv sync --frozen
+        run: uv sync --locked
 
       - name: Build package
         run: uv build

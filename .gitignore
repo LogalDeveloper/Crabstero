@@ -11,6 +11,8 @@ dist/
 build/
 *.egg-info/
 *.egg
+/*.cyclonedx.json
+/*.cyclonedx.json.zst
 
 # Virtual environments
 venv/

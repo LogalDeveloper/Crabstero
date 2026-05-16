@@ -22,7 +22,7 @@ jobs:
           fetch-depth: 0
 
       - name: Install dependencies
-        run: uv sync --locked
+        run: uv sync --locked --no-dev
 
       - name: Generate package metadata
         id: metadata
@@ -38,8 +38,9 @@ jobs:
         env:
           SYFT_CHECK_FOR_APP_UPDATE: "false"
         run: |
-          syft scan dir:. \
-            --override-default-catalogers python-package-cataloger \
+          syft scan dir:.venv \
+            --override-default-catalogers python-installed-package-cataloger \
+            --select-catalogers=-file \
             --source-name git.logal.dev/LogalDeveloper/Crabstero \
             --source-version "${{ steps.metadata.outputs.version }}" \
             --output syft-table \

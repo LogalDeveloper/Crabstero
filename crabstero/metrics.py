@@ -53,6 +53,7 @@ class UnixMetricsAddress:
     """Unix socket listen address for the metrics server."""
 
     path: str
+    mode: int | None = None
 
 
 type MetricsAddress = TcpMetricsAddress | UnixMetricsAddress
@@ -237,6 +238,8 @@ class MetricsServer:
 
                 site = web.UnixSite(self._runner, self._address.path)
                 await site.start()
+                if self._address.mode is not None:
+                    socket_path.chmod(self._address.mode)  # noqa: ASYNC240
                 logger.info(
                     "Metrics server listening on Unix socket %s.",
                     self._address.path,

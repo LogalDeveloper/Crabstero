@@ -152,16 +152,46 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             " (default: LISTEN_METRICS environment variable)."
         ),
     )
+    parser.add_argument(
+        "--metrics-unix-socket-mode",
+        default=os.environ.get("METRICS_UNIX_SOCKET_MODE"),
+        help=(
+            "Octal file mode to set on a metrics Unix socket"
+            " (e.g. 0666). Only valid with --listen-metrics unix:/path.sock."
+            " (default: METRICS_UNIX_SOCKET_MODE environment variable)."
+        ),
+    )
 
     args = parser.parse_args(argv)
+
+    metrics_unix_socket_mode: int | None = None
+    if args.metrics_unix_socket_mode is not None:
+        max_metrics_unix_socket_mode = 0o777
+        try:
+            metrics_unix_socket_mode = int(args.metrics_unix_socket_mode, 8)
+        except ValueError:
+            parser.error(
+                "--metrics-unix-socket-mode must be an octal mode"
+                " between 0000 and 0777",
+            )
+        if not 0 <= metrics_unix_socket_mode <= max_metrics_unix_socket_mode:
+            parser.error(
+                "--metrics-unix-socket-mode must be an octal mode"
+                " between 0000 and 0777",
+            )
 
     if args.listen_metrics is not None:
         if args.listen_metrics.startswith("unix:"):
             path = args.listen_metrics.removeprefix("unix:")
             if not path:
                 parser.error("--listen-metrics Unix socket path must not be empty")
-            args.listen_metrics = UnixMetricsAddress(path)
+            args.listen_metrics = UnixMetricsAddress(path, metrics_unix_socket_mode)
         else:
+            if metrics_unix_socket_mode is not None:
+                parser.error(
+                    "--metrics-unix-socket-mode is only valid with"
+                    " --listen-metrics unix:/path.sock",
+                )
             host, sep, port_str = args.listen_metrics.rpartition(":")
             if not sep or not host:
                 parser.error(
@@ -174,6 +204,11 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                 parser.error(
                     f"--listen-metrics port must be an integer, got '{port_str}'",
                 )
+    elif metrics_unix_socket_mode is not None:
+        parser.error(
+            "--metrics-unix-socket-mode is only valid with"
+            " --listen-metrics unix:/path.sock",
+        )
 
     if args.token is None:
         parser.error(

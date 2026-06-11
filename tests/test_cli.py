@@ -168,6 +168,23 @@ class TestParseArgs:
         )
         assert args.listen_metrics == UnixMetricsAddress("/run/crabstero.sock")
 
+    def test_listen_metrics_unix_socket_mode(self) -> None:
+        """--metrics-unix-socket-mode sets the Unix socket file mode."""
+        args = _parse_args(
+            [
+                "--token",
+                "test",
+                "--listen-metrics",
+                "unix:/run/crabstero.sock",
+                "--metrics-unix-socket-mode",
+                "0666",
+            ],
+        )
+        assert args.listen_metrics == UnixMetricsAddress(
+            "/run/crabstero.sock",
+            mode=0o666,
+        )
+
     def test_listen_metrics_unix_socket_from_env(
         self,
         monkeypatch: pytest.MonkeyPatch,
@@ -176,6 +193,19 @@ class TestParseArgs:
         monkeypatch.setenv("LISTEN_METRICS", "unix:/run/crabstero.sock")
         args = _parse_args(["--token", "test"])
         assert args.listen_metrics == UnixMetricsAddress("/run/crabstero.sock")
+
+    def test_listen_metrics_unix_socket_mode_from_env(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """METRICS_UNIX_SOCKET_MODE sets the Unix socket file mode."""
+        monkeypatch.setenv("LISTEN_METRICS", "unix:/run/crabstero.sock")
+        monkeypatch.setenv("METRICS_UNIX_SOCKET_MODE", "666")
+        args = _parse_args(["--token", "test"])
+        assert args.listen_metrics == UnixMetricsAddress(
+            "/run/crabstero.sock",
+            mode=0o666,
+        )
 
     def test_listen_metrics_invalid_format(self) -> None:
         """--listen-metrics with no colon raises SystemExit."""
@@ -191,6 +221,50 @@ class TestParseArgs:
         """--listen-metrics unix: with no path raises SystemExit."""
         with pytest.raises(SystemExit):
             _parse_args(["--token", "test", "--listen-metrics", "unix:"])
+
+    @pytest.mark.parametrize(
+        "mode",
+        [
+            pytest.param("bad", id="not-octal"),
+            pytest.param("0888", id="invalid-octal-digit"),
+            pytest.param("1000", id="too-large"),
+            pytest.param("-1", id="negative"),
+        ],
+    )
+    def test_metrics_unix_socket_mode_invalid(self, mode: str) -> None:
+        """Invalid Unix socket modes fail argument parsing."""
+        with pytest.raises(SystemExit):
+            _parse_args(
+                [
+                    "--token",
+                    "test",
+                    "--listen-metrics",
+                    "unix:/run/crabstero.sock",
+                    "--metrics-unix-socket-mode",
+                    mode,
+                ],
+            )
+
+    def test_metrics_unix_socket_mode_requires_unix_socket(self) -> None:
+        """Unix socket mode cannot be used with a TCP metrics listener."""
+        with pytest.raises(SystemExit):
+            _parse_args(
+                [
+                    "--token",
+                    "test",
+                    "--listen-metrics",
+                    "127.0.0.1:9090",
+                    "--metrics-unix-socket-mode",
+                    "0666",
+                ],
+            )
+
+    def test_metrics_unix_socket_mode_requires_metrics_listener(self) -> None:
+        """Unix socket mode cannot be used without a metrics listener."""
+        with pytest.raises(SystemExit):
+            _parse_args(
+                ["--token", "test", "--metrics-unix-socket-mode", "0666"],
+            )
 
     def test_missing_token_exits(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Missing token causes SystemExit."""

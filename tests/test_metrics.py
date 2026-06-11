@@ -158,6 +158,16 @@ class TestMetricsServer:
         ):
             assert resp.status == HTTPStatus.NOT_FOUND
 
+    async def test_unix_socket_mode_is_applied(self, tmp_path: Path) -> None:
+        """Configured Unix socket mode is applied after startup."""
+        socket_path = tmp_path / "metrics.sock"
+        server = MetricsServer(UnixMetricsAddress(str(socket_path), mode=0o666))
+        await server.start()
+        try:
+            assert socket_path.stat().st_mode & 0o777 == 0o666
+        finally:
+            await server.stop()
+
     async def test_stale_unix_socket_path_is_recovered(
         self,
         tmp_path: Path,
@@ -167,9 +177,10 @@ class TestMetricsServer:
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as stale_socket:
             stale_socket.bind(str(socket_path))
 
-        server = MetricsServer(UnixMetricsAddress(str(socket_path)))
+        server = MetricsServer(UnixMetricsAddress(str(socket_path), mode=0o666))
         await server.start()
         try:
+            assert socket_path.stat().st_mode & 0o777 == 0o666
             connector = aiohttp.UnixConnector(path=str(socket_path))
             async with (
                 aiohttp.ClientSession(connector=connector) as session,

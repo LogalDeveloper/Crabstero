@@ -202,8 +202,12 @@ class MetricsServer:
                 )
             else:
                 socket_path = Path(self._address.path)
+                # This runs once before binding the Unix site, so synchronous
+                # path checks are simpler than offloading startup setup.
                 try:
-                    mode = socket_path.stat(follow_symlinks=False).st_mode
+                    mode = socket_path.stat(  # noqa: ASYNC240
+                        follow_symlinks=False,
+                    ).st_mode
                 except FileNotFoundError:
                     pass
                 else:
@@ -229,7 +233,7 @@ class MetricsServer:
                             raise OSError(errno.EADDRINUSE, msg)
 
                     with contextlib.suppress(FileNotFoundError):
-                        socket_path.unlink()
+                        socket_path.unlink()  # noqa: ASYNC240
 
                 site = web.UnixSite(self._runner, self._address.path)
                 await site.start()

@@ -19,7 +19,13 @@ registry. The MetricsServer class wraps an aiohttp application that serves
 the ``/metrics`` scrape endpoint.
 """
 
+import contextlib
+import errno
 import logging
+import socket
+import stat
+from dataclasses import dataclass
+from pathlib import Path
 
 from aiohttp import web
 from prometheus_client import Counter, Gauge, Histogram, Info
@@ -32,6 +38,25 @@ logger = logging.getLogger(__name__)
 _FAST_BUCKETS = (0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0)
 _SLOW_BUCKETS = (0.1, 0.5, 1.0, 5.0, 10.0, 30.0, 60.0, 120.0, 300.0, 600.0)
 _MESSAGES_BUCKETS = (100, 500, 1000, 5000, 10000, 25000, 50000)
+
+
+@dataclass(frozen=True, slots=True)
+class TcpMetricsAddress:
+    """TCP listen address for the metrics server."""
+
+    host: str
+    port: int
+
+
+@dataclass(frozen=True, slots=True)
+class UnixMetricsAddress:
+    """Unix socket listen address for the metrics server."""
+
+    path: str
+
+
+type MetricsAddress = TcpMetricsAddress | UnixMetricsAddress
+
 
 BUILD_INFO = Info("crabstero_build", "Build information")
 BUILD_INFO.info({"version": __version__})
@@ -119,21 +144,21 @@ CHANNEL_INGESTION_MESSAGES = Histogram(
 class MetricsServer:
     """HTTP server that exposes a Prometheus ``/metrics`` scrape endpoint.
 
-    Uses ``aiohttp.web.AppRunner`` and ``TCPSite`` for async-native serving.
+    Uses ``aiohttp.web.AppRunner`` with TCP or Unix socket sites for
+    async-native serving.
     The handler is provided by ``prometheus_client.aiohttp.make_aiohttp_handler``,
     which handles compression and content negotiation automatically.
     """
 
-    __slots__ = ("_host", "_port", "_runner")
+    __slots__ = ("_address", "_port", "_runner")
 
-    def __init__(self, host: str, port: int) -> None:
+    def __init__(self, address: MetricsAddress) -> None:
         """Store the listen address.
 
-        :param host: The hostname or IP to bind to.
-        :param port: The TCP port to bind to. Use 0 for OS-assigned.
+        :param address: TCP or Unix socket address to bind to.
         """
-        self._host = host
-        self._port = port
+        self._address = address
+        self._port = address.port if isinstance(address, TcpMetricsAddress) else None
         self._runner: web.AppRunner | None = None
 
     @property
@@ -143,6 +168,9 @@ class MetricsServer:
         After ``start()``, this reflects the actual port (useful when
         the constructor received port 0 for OS assignment).
         """
+        if self._port is None:
+            msg = "Unix socket metrics server does not have a TCP port"
+            raise RuntimeError(msg)
         return self._port
 
     async def start(self) -> None:
@@ -154,14 +182,65 @@ class MetricsServer:
         app.router.add_get("/metrics", make_aiohttp_handler())
         self._runner = web.AppRunner(app)
         await self._runner.setup()
-        site = web.TCPSite(self._runner, self._host, self._port)
-        await site.start()
+        try:
+            if isinstance(self._address, TcpMetricsAddress):
+                site: web.BaseSite = web.TCPSite(
+                    self._runner,
+                    self._address.host,
+                    self._address.port,
+                )
+                await site.start()
 
-        # Resolve the actual bound port when the OS assigned one.
-        if self._port == 0:
-            self._port = self._runner.addresses[0][1]
+                # Resolve the actual bound port when the OS assigned one.
+                if self._address.port == 0:
+                    self._port = self._runner.addresses[0][1]
 
-        logger.info("Metrics server listening on %s:%d.", self._host, self._port)
+                logger.info(
+                    "Metrics server listening on %s:%d.",
+                    self._address.host,
+                    self.port,
+                )
+            else:
+                socket_path = Path(self._address.path)
+                try:
+                    mode = socket_path.stat(follow_symlinks=False).st_mode
+                except FileNotFoundError:
+                    pass
+                else:
+                    if not stat.S_ISSOCK(mode):
+                        msg = (
+                            "Metrics Unix socket path already exists and is not a "
+                            f"socket: {self._address.path}"
+                        )
+                        raise FileExistsError(msg)
+
+                    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as probe:
+                        probe.settimeout(0.1)
+                        try:
+                            probe.connect(self._address.path)
+                        except OSError as exc:
+                            if exc.errno not in {errno.ECONNREFUSED, errno.ENOENT}:
+                                raise
+                        else:
+                            msg = (
+                                "Metrics Unix socket path is already in use: "
+                                f"{self._address.path}"
+                            )
+                            raise OSError(errno.EADDRINUSE, msg)
+
+                    with contextlib.suppress(FileNotFoundError):
+                        socket_path.unlink()
+
+                site = web.UnixSite(self._runner, self._address.path)
+                await site.start()
+                logger.info(
+                    "Metrics server listening on Unix socket %s.",
+                    self._address.path,
+                )
+        except Exception:
+            await self._runner.cleanup()
+            self._runner = None
+            raise
 
     async def stop(self) -> None:
         """Shut down the HTTP server and release resources."""

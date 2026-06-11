@@ -36,6 +36,7 @@ from crabstero.metrics import (
     ERRORS,
     GUILD_COUNT,
     INGESTION_ACTIVE,
+    MetricsAddress,
     MetricsServer,
 )
 from crabstero.tasks.ingestion import ingest_channel
@@ -60,14 +61,14 @@ class Crabstero(commands.Bot):
         database_path: str,
         *,
         ingest_only: bool = False,
-        metrics_address: tuple[str, int] | None = None,
+        metrics_address: MetricsAddress | None = None,
     ) -> None:
         """Configure intents, store configuration, and prepare ingestion state.
 
         :param token: The Discord bot token.
         :param database_path: The file path to the SQLite database.
         :param ingest_only: When True, the bot only ingests data and never responds.
-        :param metrics_address: Optional (host, port) for the Prometheus metrics server.
+        :param metrics_address: Optional address for the Prometheus metrics server.
         """
         intents = discord.Intents.default()
         intents.guilds = True
@@ -121,7 +122,7 @@ class Crabstero(commands.Bot):
         self.ingest_cache.start()
 
         if self._metrics_address is not None:
-            server = MetricsServer(*self._metrics_address)
+            server = MetricsServer(self._metrics_address)
             await server.start()
             self._metrics_server = server
 

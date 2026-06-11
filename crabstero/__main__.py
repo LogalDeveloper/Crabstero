@@ -31,6 +31,7 @@ import uvloop
 
 from crabstero import __version__ as crabstero_version
 from crabstero.bot import Crabstero
+from crabstero.metrics import TcpMetricsAddress, UnixMetricsAddress
 
 logger = logging.getLogger("crabstero")
 
@@ -145,8 +146,9 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--listen-metrics",
         default=os.environ.get("LISTEN_METRICS"),
         help=(
-            "Enable Prometheus metrics endpoint on HOST:PORT"
-            " (e.g. 127.0.0.1:9090). Disabled by default."
+            "Enable Prometheus metrics endpoint on HOST:PORT or unix:/path.sock"
+            " (e.g. 127.0.0.1:9090 or unix:/run/crabstero.sock)."
+            " Disabled by default."
             " (default: LISTEN_METRICS environment variable)."
         ),
     )
@@ -154,15 +156,24 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     args = parser.parse_args(argv)
 
     if args.listen_metrics is not None:
-        host, sep, port_str = args.listen_metrics.rpartition(":")
-        if not sep or not host:
-            parser.error(
-                "--listen-metrics must be in HOST:PORT format (e.g. 127.0.0.1:9090)",
-            )
-        try:
-            args.listen_metrics = (host, int(port_str))
-        except ValueError:
-            parser.error(f"--listen-metrics port must be an integer, got '{port_str}'")
+        if args.listen_metrics.startswith("unix:"):
+            path = args.listen_metrics.removeprefix("unix:")
+            if not path:
+                parser.error("--listen-metrics Unix socket path must not be empty")
+            args.listen_metrics = UnixMetricsAddress(path)
+        else:
+            host, sep, port_str = args.listen_metrics.rpartition(":")
+            if not sep or not host:
+                parser.error(
+                    "--listen-metrics must be in HOST:PORT or unix:/path.sock format "
+                    "(e.g. 127.0.0.1:9090)",
+                )
+            try:
+                args.listen_metrics = TcpMetricsAddress(host, int(port_str))
+            except ValueError:
+                parser.error(
+                    f"--listen-metrics port must be an integer, got '{port_str}'",
+                )
 
     if args.token is None:
         parser.error(

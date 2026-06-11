@@ -15,13 +15,16 @@
 """Entry point for the Crabstero Discord bot.
 
 Provides an argparse CLI with environment variable and systemd credential
-fallbacks for --token and --database-path.
+fallbacks, plus systemd notify/watchdog integration when run as a service.
 """
 
 import argparse
+import asyncio
+import contextlib
 import logging
 import os
 import signal
+import socket
 from pathlib import Path
 
 import uvloop
@@ -30,6 +33,53 @@ from crabstero import __version__ as crabstero_version
 from crabstero.bot import Crabstero
 
 logger = logging.getLogger("crabstero")
+
+
+def _sd_notify(state: str) -> None:
+    """Send a notification to systemd, if running under a systemd service.
+
+    :param state: The systemd notification payload.
+    """
+    addr = os.environ.get("NOTIFY_SOCKET")
+    if not addr:
+        return
+
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM) as sock:
+            if addr[0] == "@":
+                addr = "\0" + addr[1:]
+            sock.sendto(state.encode(), addr)
+    except OSError as exc:
+        logger.debug("Could not send systemd notification: %s", exc)
+
+
+def _watchdog_interval() -> float | None:
+    """Return the systemd watchdog ping interval in seconds, if enabled."""
+    usec = os.environ.get("WATCHDOG_USEC")
+    if not usec:
+        return None
+
+    try:
+        watchdog_usec = int(usec)
+    except ValueError:
+        return None
+
+    if watchdog_usec <= 0:
+        return None
+
+    return watchdog_usec / 1_000_000 / 2
+
+
+async def _watchdog_loop(interval: float, stop: asyncio.Event) -> None:
+    """Send systemd watchdog pings until *stop* is set.
+
+    :param interval: Seconds to wait between watchdog pings.
+    :param stop: Event that stops the watchdog loop.
+    """
+    while not stop.is_set():
+        _sd_notify("WATCHDOG=1")
+        with contextlib.suppress(TimeoutError):
+            await asyncio.wait_for(stop.wait(), timeout=interval)
 
 
 def _read_credential(name: str) -> str | None:
@@ -143,12 +193,74 @@ def main() -> None:
     )
 
     async def _run() -> None:
-        async with bot:
-            await bot.start()
+        loop = asyncio.get_running_loop()
+        watchdog_stop = asyncio.Event()
+        watchdog_task: asyncio.Task[None] | None = None
+        shutdown_task: asyncio.Task[None] | None = None
+        ready_notified = False
+        stopping_notified = False
 
-    # Make SIGTERM behave like SIGINT so systemd stop triggers the same
-    # clean shutdown path (context manager __aexit__ -> bot.close()).
-    signal.signal(signal.SIGTERM, signal.default_int_handler)
+        def notify_stopping() -> None:
+            nonlocal stopping_notified
+            if stopping_notified:
+                return
+            stopping_notified = True
+            _sd_notify("STOPPING=1")
+
+        async def shutdown() -> None:
+            logger.info("Received shutdown signal.")
+            notify_stopping()
+            await bot.close()
+
+        def request_shutdown() -> None:
+            nonlocal shutdown_task
+            if shutdown_task is None or shutdown_task.done():
+                shutdown_task = asyncio.create_task(
+                    shutdown(),
+                    name="crabstero-shutdown",
+                )
+
+        handled_signals = (signal.SIGINT, signal.SIGTERM)
+        for sig in handled_signals:
+            loop.add_signal_handler(sig, request_shutdown)
+
+        try:
+            async with bot:
+                try:
+                    await bot.login(args.token)
+                    if bot.is_closed() or stopping_notified:
+                        return
+
+                    _sd_notify("READY=1")
+                    ready_notified = True
+
+                    wd_interval = _watchdog_interval()
+                    if wd_interval is not None:
+                        logger.info(
+                            "systemd watchdog enabled (pinging every %.1fs).",
+                            wd_interval,
+                        )
+                        watchdog_task = asyncio.create_task(
+                            _watchdog_loop(wd_interval, watchdog_stop),
+                            name="systemd-watchdog",
+                        )
+
+                    await bot.connect(reconnect=True)
+                finally:
+                    if ready_notified:
+                        notify_stopping()
+
+                    watchdog_stop.set()
+                    if watchdog_task is not None:
+                        watchdog_task.cancel()
+                        with contextlib.suppress(asyncio.CancelledError):
+                            await watchdog_task
+
+                    if shutdown_task is not None:
+                        await shutdown_task
+        finally:
+            for sig in handled_signals:
+                loop.remove_signal_handler(sig)
 
     try:
         uvloop.run(_run())

@@ -57,7 +57,6 @@ class Crabstero(commands.Bot):
 
     def __init__(
         self,
-        token: str,
         database_path: str,
         *,
         ingest_only: bool = False,
@@ -65,11 +64,12 @@ class Crabstero(commands.Bot):
     ) -> None:
         """Configure intents, store configuration, and prepare ingestion state.
 
-        :param token: The Discord bot token.
         :param database_path: The file path to the SQLite database.
         :param ingest_only: When True, the bot only ingests data and never responds.
         :param metrics_address: Optional address for the Prometheus metrics server.
         """
+        logger.info("Crabstero v%s - A logal.dev project", crabstero_version)
+
         intents = discord.Intents.default()
         intents.guilds = True
         intents.guild_messages = True
@@ -81,7 +81,6 @@ class Crabstero(commands.Bot):
             max_messages=None,  # Disables the message cache.
         )
 
-        self._token = token
         self._database_path = database_path
         self._ingest_only = ingest_only
         self._ingestion_semaphore = asyncio.Semaphore(_MAX_CONCURRENT_INGESTIONS)
@@ -227,11 +226,6 @@ class Crabstero(commands.Bot):
     async def on_ready(self) -> None:
         """Log that the bot has started successfully."""
         logger.info("Crabstero started!")
-
-    @override
-    async def start(self, token: str = "", *, reconnect: bool = True) -> None:
-        """Start the bot using the token provided at initialization."""
-        await super().start(self._token, reconnect=reconnect)
 
     @override
     async def close(self) -> None:

@@ -16,7 +16,7 @@ dependencies = [
 ]
 
 [project.scripts]
-crabstero = "crabstero.__main__:main"
+crabstero = "crabstero.cli:main"
 
 [project.urls]
 Repository = "https://git.logal.dev/LogalDeveloper/Crabstero"

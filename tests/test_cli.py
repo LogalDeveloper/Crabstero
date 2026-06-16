@@ -14,10 +14,11 @@
 
 """Unit tests for CLI argument parsing, credentials, and systemd integration.
 
-Tests cover the CLI helpers and runtime orchestration from crabstero.__main__.
+Tests cover the CLI helpers and runtime orchestration from crabstero.cli.
 """
 
 import asyncio
+import os
 import signal
 import socket
 import sys
@@ -25,8 +26,8 @@ from typing import TYPE_CHECKING, Any, ClassVar, Self
 
 import pytest
 
-from crabstero import __main__ as cli
-from crabstero.__main__ import (
+from crabstero import cli
+from crabstero.cli import (
     _parse_args,
     _read_credential,
     _sd_notify,
@@ -44,6 +45,7 @@ if TYPE_CHECKING:
 class _FakeCrabstero:
     events: ClassVar[list[object]] = []
     login_error: ClassVar[BaseException | None] = None
+    login_callback: ClassVar[Callable[[], None] | None] = None
     close_error: ClassVar[BaseException | None] = None
     connect_callback: ClassVar[Callable[[], None] | None] = None
 
@@ -66,6 +68,10 @@ class _FakeCrabstero:
 
     async def login(self, token: str) -> None:
         self.events.append(("login", token))
+        callback = type(self).login_callback
+        if callback is not None:
+            callback()
+            await asyncio.sleep(0)
         if self.login_error is not None:
             raise self.login_error
 
@@ -88,8 +94,10 @@ class _FakeCrabstero:
         return self._closed
 
 
-def _run_coroutine(coro: Coroutine[Any, Any, None]) -> None:
-    asyncio.run(coro)
+def _run_coroutine(
+    coro: Coroutine[Any, Any, signal.Signals | None],
+) -> signal.Signals | None:
+    return asyncio.run(coro)
 
 
 def _prepare_main_test(
@@ -100,6 +108,7 @@ def _prepare_main_test(
 ) -> list[object]:
     _FakeCrabstero.events = []
     _FakeCrabstero.login_error = login_error
+    _FakeCrabstero.login_callback = None
     _FakeCrabstero.close_error = close_error
     _FakeCrabstero.connect_callback = None
 
@@ -108,7 +117,7 @@ def _prepare_main_test(
 
     monkeypatch.setattr(sys, "argv", ["crabstero", "--token", "cli-token"])
     monkeypatch.setattr(cli, "Crabstero", _FakeCrabstero)
-    monkeypatch.setattr("crabstero.__main__.uvloop.run", _run_coroutine)
+    monkeypatch.setattr("crabstero.cli.uvloop.run", _run_coroutine)
     monkeypatch.setattr(cli, "_sd_notify", sd_notify)
     monkeypatch.setattr(cli, "_watchdog_interval", lambda: None)
 
@@ -142,31 +151,31 @@ class TestParseArgs:
     def test_listen_metrics_parses_address(self) -> None:
         """--listen-metrics HOST:PORT sets listen_metrics to (host, port)."""
         args = _parse_args(["--token", "test", "--listen-metrics", "127.0.0.1:9090"])
-        assert args.listen_metrics == TcpMetricsAddress("127.0.0.1", 9090)
+        assert args.metrics_address == TcpMetricsAddress("127.0.0.1", 9090)
 
     def test_listen_metrics_default_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Omitting --listen-metrics defaults to None."""
         monkeypatch.delenv("LISTEN_METRICS", raising=False)
         args = _parse_args(["--token", "test"])
-        assert args.listen_metrics is None
+        assert args.metrics_address is None
 
     def test_listen_metrics_ipv6(self) -> None:
         """--listen-metrics [::1]:PORT parses IPv6 address correctly."""
         args = _parse_args(["--token", "test", "--listen-metrics", "[::1]:9090"])
-        assert args.listen_metrics == TcpMetricsAddress("[::1]", 9090)
+        assert args.metrics_address == TcpMetricsAddress("[::1]", 9090)
 
     def test_listen_metrics_from_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """LISTEN_METRICS env var is used when --listen-metrics is omitted."""
         monkeypatch.setenv("LISTEN_METRICS", "127.0.0.1:8080")
         args = _parse_args(["--token", "test"])
-        assert args.listen_metrics == TcpMetricsAddress("127.0.0.1", 8080)
+        assert args.metrics_address == TcpMetricsAddress("127.0.0.1", 8080)
 
     def test_listen_metrics_unix_socket(self) -> None:
         """--listen-metrics unix:/path sets listen_metrics to a Unix socket."""
         args = _parse_args(
             ["--token", "test", "--listen-metrics", "unix:/run/crabstero.sock"],
         )
-        assert args.listen_metrics == UnixMetricsAddress("/run/crabstero.sock")
+        assert args.metrics_address == UnixMetricsAddress("/run/crabstero.sock")
 
     def test_listen_metrics_unix_socket_mode(self) -> None:
         """--metrics-unix-socket-mode sets the Unix socket file mode."""
@@ -180,7 +189,7 @@ class TestParseArgs:
                 "0666",
             ],
         )
-        assert args.listen_metrics == UnixMetricsAddress(
+        assert args.metrics_address == UnixMetricsAddress(
             "/run/crabstero.sock",
             mode=0o666,
         )
@@ -192,7 +201,7 @@ class TestParseArgs:
         """LISTEN_METRICS can enable metrics on a Unix socket."""
         monkeypatch.setenv("LISTEN_METRICS", "unix:/run/crabstero.sock")
         args = _parse_args(["--token", "test"])
-        assert args.listen_metrics == UnixMetricsAddress("/run/crabstero.sock")
+        assert args.metrics_address == UnixMetricsAddress("/run/crabstero.sock")
 
     def test_listen_metrics_unix_socket_mode_from_env(
         self,
@@ -202,7 +211,7 @@ class TestParseArgs:
         monkeypatch.setenv("LISTEN_METRICS", "unix:/run/crabstero.sock")
         monkeypatch.setenv("METRICS_UNIX_SOCKET_MODE", "666")
         args = _parse_args(["--token", "test"])
-        assert args.listen_metrics == UnixMetricsAddress(
+        assert args.metrics_address == UnixMetricsAddress(
             "/run/crabstero.sock",
             mode=0o666,
         )
@@ -348,7 +357,35 @@ class TestWatchdog:
     ) -> None:
         """WATCHDOG_USEC is converted to half the interval in seconds."""
         monkeypatch.setenv("WATCHDOG_USEC", "4000000")
+        monkeypatch.delenv("WATCHDOG_PID", raising=False)
         assert _watchdog_interval() == 2
+
+    def test_watchdog_interval_valid_for_matching_pid(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """WATCHDOG_PID enables watchdog pings for the current process."""
+        monkeypatch.setenv("WATCHDOG_USEC", "4000000")
+        monkeypatch.setenv("WATCHDOG_PID", str(os.getpid()))
+        assert _watchdog_interval() == 2
+
+    def test_watchdog_interval_ignores_different_pid(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """WATCHDOG_PID disables pings for non-matching processes."""
+        monkeypatch.setenv("WATCHDOG_USEC", "4000000")
+        monkeypatch.setenv("WATCHDOG_PID", str(os.getpid() + 1))
+        assert _watchdog_interval() is None
+
+    def test_watchdog_interval_ignores_invalid_pid(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Invalid WATCHDOG_PID disables watchdog pings."""
+        monkeypatch.setenv("WATCHDOG_USEC", "4000000")
+        monkeypatch.setenv("WATCHDOG_PID", "invalid")
+        assert _watchdog_interval() is None
 
     @pytest.mark.parametrize(
         "value",
@@ -387,6 +424,50 @@ class TestWatchdog:
 class TestMainLifecycle:
     """CLI runtime orchestration."""
 
+    def test_constructs_bot_without_token(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """The CLI keeps the Discord token out of Crabstero construction."""
+        events = _prepare_main_test(monkeypatch)
+
+        assert cli.main() == 0
+
+        init_event = events[0]
+        assert isinstance(init_event, tuple)
+        assert init_event == (
+            "init",
+            {
+                "database_path": "crabstero.db",
+                "ingest_only": False,
+                "metrics_address": None,
+            },
+        )
+        init_kwargs = init_event[1]
+        assert isinstance(init_kwargs, dict)
+        assert "token" not in init_kwargs
+
+    def test_main_accepts_explicit_argv(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """main(argv) runs from explicit arguments instead of sys.argv."""
+        events = _prepare_main_test(monkeypatch)
+
+        assert (
+            cli.main(["--token", "argv-token", "--database-path", "/custom.db"]) == 0
+        )
+
+        assert events[0] == (
+            "init",
+            {
+                "database_path": "/custom.db",
+                "ingest_only": False,
+                "metrics_address": None,
+            },
+        )
+        assert ("login", "argv-token") in events
+
     def test_ready_sent_after_login_before_connect(
         self,
         monkeypatch: pytest.MonkeyPatch,
@@ -394,7 +475,7 @@ class TestMainLifecycle:
         """READY=1 is sent after login succeeds and before connect starts."""
         events = _prepare_main_test(monkeypatch)
 
-        cli.main()
+        assert cli.main() == 0
 
         assert events.index(("login", "cli-token")) < events.index(
             ("notify", "READY=1"),
@@ -410,7 +491,7 @@ class TestMainLifecycle:
         """STOPPING=1 is sent when the CLI run exits cleanly after readiness."""
         events = _prepare_main_test(monkeypatch)
 
-        cli.main()
+        assert cli.main() == 0
 
         assert events.index(("connect", {"reconnect": True})) < events.index(
             ("notify", "STOPPING=1"),
@@ -443,9 +524,10 @@ class TestMainLifecycle:
             def add_signal_handler(
                 self,
                 sig: int,
-                callback: Callable[[], None],
+                callback: Callable[..., None],
+                *args: object,
             ) -> None:
-                signal_handlers[sig] = callback
+                signal_handlers[sig] = lambda: callback(*args)
 
             def remove_signal_handler(self, sig: int) -> None:
                 signal_handlers.pop(sig, None)
@@ -465,3 +547,92 @@ class TestMainLifecycle:
             cli.main()
 
         assert events.index(("notify", "STOPPING=1")) < events.index("close")
+
+    @pytest.mark.parametrize(
+        ("sig", "exit_code"),
+        [
+            pytest.param(signal.SIGINT, 130, id="sigint"),
+            pytest.param(signal.SIGTERM, 0, id="sigterm"),
+        ],
+    )
+    def test_registered_signal_handler_sets_exit_code(
+        self,
+        sig: signal.Signals,
+        exit_code: int,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Signal callbacks preserve SIGINT and SIGTERM CLI exit semantics."""
+        signal_handlers: dict[int, Callable[[], None]] = {}
+
+        class SignalLoop:
+            def add_signal_handler(
+                self,
+                sig: int,
+                callback: Callable[..., None],
+                *args: object,
+            ) -> None:
+                signal_handlers[sig] = lambda: callback(*args)
+
+            def remove_signal_handler(self, sig: int) -> None:
+                signal_handlers.pop(sig, None)
+
+        events = _prepare_main_test(monkeypatch)
+
+        def request_shutdown() -> None:
+            signal_handlers[sig]()
+
+        monkeypatch.setattr(asyncio, "get_running_loop", SignalLoop)
+        _FakeCrabstero.connect_callback = request_shutdown
+
+        assert cli.main() == exit_code
+        assert ("notify", "STOPPING=1") in events
+        assert "close" in events
+        assert signal_handlers == {}
+
+    def test_registered_signal_during_login_exits_before_ready(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A signal during login cancels startup without reporting readiness."""
+        signal_handlers: dict[int, Callable[[], None]] = {}
+
+        class SignalLoop:
+            def add_signal_handler(
+                self,
+                sig: int,
+                callback: Callable[..., None],
+                *args: object,
+            ) -> None:
+                signal_handlers[sig] = lambda: callback(*args)
+
+            def remove_signal_handler(self, sig: int) -> None:
+                signal_handlers.pop(sig, None)
+
+        events = _prepare_main_test(monkeypatch)
+
+        def request_shutdown() -> None:
+            signal_handlers[signal.SIGINT]()
+
+        monkeypatch.setattr(asyncio, "get_running_loop", SignalLoop)
+        _FakeCrabstero.login_callback = request_shutdown
+
+        assert cli.main() == 130
+        assert ("notify", "READY=1") not in events
+        assert ("notify", "STOPPING=1") in events
+        assert "close" in events
+        assert signal_handlers == {}
+
+    def test_keyboard_interrupt_returns_130(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """KeyboardInterrupt maps to the conventional interrupted exit code."""
+
+        def interrupt(coro: Coroutine[Any, Any, None]) -> None:
+            coro.close()
+            raise KeyboardInterrupt
+
+        monkeypatch.setattr(sys, "argv", ["crabstero", "--token", "cli-token"])
+        monkeypatch.setattr("crabstero.cli.uvloop.run", interrupt)
+
+        assert cli.main() == 130

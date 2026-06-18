@@ -15,13 +15,13 @@
 """Unit tests for the flag convenience wrappers and enums.
 
 Tests cover _entity_id, Flag and EntityType enums, and the high-level
-set_flag/clear_flag/is_flag_set wrappers from crabstero.flags.
+set_flag/clear_flag/is_flag_set wrappers from crabstero.flags without crossing
+the SQLite database boundary.
 """
-
-from typing import TYPE_CHECKING
 
 import pytest
 
+from crabstero.database import Database
 from crabstero.flags import (
     EntityType,
     Flag,
@@ -31,15 +31,47 @@ from crabstero.flags import (
     set_flag,
 )
 
-if TYPE_CHECKING:
-    from crabstero.database import Database
-
 
 class _StubSnowflake:
-    """Minimal stand-in for discord.abc.Snowflake."""
+    """Minimal stand-in for objects that expose a Discord snowflake ID."""
 
     def __init__(self, *, entity_id: int = 123456789) -> None:
         self.id = entity_id
+
+
+class _FakeFlagDatabase(Database):
+    """In-memory flag store that records wrapper calls below SQLite."""
+
+    def __init__(self) -> None:
+        self.flags: set[tuple[str, str, str]] = set()
+
+    async def set_flag(self, entity_type: str, entity_id: str, flag_name: str) -> None:
+        """Record a flag set operation."""
+        self.flags.add((entity_type, entity_id, flag_name))
+
+    async def clear_flag(
+        self,
+        entity_type: str,
+        entity_id: str,
+        flag_name: str,
+    ) -> None:
+        """Record a flag clear operation."""
+        self.flags.discard((entity_type, entity_id, flag_name))
+
+    async def is_flag_set(
+        self,
+        entity_type: str,
+        entity_id: str,
+        flag_name: str,
+    ) -> bool:
+        """Return whether a flag has been set."""
+        return (entity_type, entity_id, flag_name) in self.flags
+
+
+@pytest.fixture
+def flag_db() -> _FakeFlagDatabase:
+    """Return an isolated flag store for wrapper tests."""
+    return _FakeFlagDatabase()
 
 
 class TestEntityId:
@@ -100,17 +132,33 @@ class TestSetClearCheck:
             pytest.param(Flag.ALLOW_PINGS, id="allow-pings"),
         ],
     )
-    async def test_set_then_check(self, db: Database, flag: Flag) -> None:
+    async def test_set_then_check(self, flag_db: _FakeFlagDatabase, flag: Flag) -> None:
         """A set flag is reported as set."""
-        await set_flag(db, 1, EntityType.CHANNEL, flag)
-        assert await is_flag_set(db, 1, EntityType.CHANNEL, flag) is True
+        await set_flag(flag_db, 1, EntityType.CHANNEL, flag)
+        assert await is_flag_set(flag_db, 1, EntityType.CHANNEL, flag) is True
 
-    async def test_unset_returns_false(self, db: Database) -> None:
+    async def test_unset_returns_false(self, flag_db: _FakeFlagDatabase) -> None:
         """An unset flag is reported as not set."""
-        assert await is_flag_set(db, 1, EntityType.CHANNEL, Flag.NO_REPLY) is False
+        assert (
+            await is_flag_set(
+                flag_db,
+                1,
+                EntityType.CHANNEL,
+                Flag.NO_REPLY,
+            )
+            is False
+        )
 
-    async def test_clear_removes_flag(self, db: Database) -> None:
+    async def test_clear_removes_flag(self, flag_db: _FakeFlagDatabase) -> None:
         """A cleared flag is no longer reported as set."""
-        await set_flag(db, 1, EntityType.CHANNEL, Flag.NO_REPLY)
-        await clear_flag(db, 1, EntityType.CHANNEL, Flag.NO_REPLY)
-        assert await is_flag_set(db, 1, EntityType.CHANNEL, Flag.NO_REPLY) is False
+        await set_flag(flag_db, 1, EntityType.CHANNEL, Flag.NO_REPLY)
+        await clear_flag(flag_db, 1, EntityType.CHANNEL, Flag.NO_REPLY)
+        assert (
+            await is_flag_set(
+                flag_db,
+                1,
+                EntityType.CHANNEL,
+                Flag.NO_REPLY,
+            )
+            is False
+        )

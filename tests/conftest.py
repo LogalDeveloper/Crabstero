@@ -12,21 +12,36 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Shared pytest fixtures for the test suite."""
-
-from typing import TYPE_CHECKING
+"""Shared pytest hooks for the test suite."""
 
 import pytest
 
-from crabstero.database import Database
 
-if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator
+@pytest.hookimpl(tryfirst=True)
+def pytest_collection_modifyitems(
+    config: pytest.Config,
+    items: list[pytest.Item],
+) -> None:
+    """Apply and enforce primary test category markers by directory."""
+    tests_root = config.rootpath / "tests"
+    category_roots = (
+        (tests_root / "unit", pytest.mark.unit),
+        (tests_root / "integration", pytest.mark.integration),
+    )
+    uncategorized: list[str] = []
 
+    for item in items:
+        for category_root, marker in category_roots:
+            if item.path.is_relative_to(category_root):
+                item.add_marker(marker)
+                break
+        else:
+            uncategorized.append(str(item.path.relative_to(config.rootpath)))
 
-@pytest.fixture
-async def db() -> AsyncGenerator[Database]:
-    """Yield a Database backed by an in-memory SQLite database."""
-    database = await Database.connect(":memory:")
-    yield database
-    await database.close()
+    if uncategorized:
+        formatted_paths = "\n".join(f"  - {path}" for path in uncategorized)
+        msg = (
+            "Tests must live under tests/unit or tests/integration.\n"
+            f"Uncategorized tests:\n{formatted_paths}"
+        )
+        raise pytest.UsageError(msg)

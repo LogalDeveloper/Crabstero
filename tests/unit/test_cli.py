@@ -20,7 +20,6 @@ Tests cover the CLI helpers and runtime orchestration from crabstero.cli.
 import asyncio
 import os
 import signal
-import socket
 import sys
 from typing import TYPE_CHECKING, Any, ClassVar, Self
 
@@ -43,11 +42,36 @@ if TYPE_CHECKING:
 
 
 class _FakeCrabstero:
+    """Fake bot that records CLI lifecycle calls without touching Discord.
+
+    Tests can inject callbacks during login/connect and exceptions during
+    login/close to exercise CLI shutdown ordering and propagation paths.
+    """
+
     events: ClassVar[list[object]] = []
     login_error: ClassVar[BaseException | None] = None
     login_callback: ClassVar[Callable[[], None] | None] = None
     close_error: ClassVar[BaseException | None] = None
     connect_callback: ClassVar[Callable[[], None] | None] = None
+
+    @classmethod
+    def reset(
+        cls,
+        *,
+        login_error: BaseException | None = None,
+        close_error: BaseException | None = None,
+    ) -> list[object]:
+        """Clear scenario state and return the shared lifecycle event log.
+
+        The event log is shared across fake instances so tests can assert the
+        ordering of construction, login, notifications, connect, and close.
+        """
+        cls.events = []
+        cls.login_error = login_error
+        cls.login_callback = None
+        cls.close_error = close_error
+        cls.connect_callback = None
+        return cls.events
 
     def __init__(self, **kwargs: object) -> None:
         self._closed = False
@@ -94,34 +118,68 @@ class _FakeCrabstero:
         return self._closed
 
 
-def _run_coroutine(
-    coro: Coroutine[Any, Any, signal.Signals | None],
-) -> signal.Signals | None:
-    return asyncio.run(coro)
-
-
-def _prepare_main_test(
+@pytest.fixture
+def prepared_main(
     monkeypatch: pytest.MonkeyPatch,
-    *,
-    login_error: BaseException | None = None,
-    close_error: BaseException | None = None,
-) -> list[object]:
-    _FakeCrabstero.events = []
-    _FakeCrabstero.login_error = login_error
-    _FakeCrabstero.login_callback = None
-    _FakeCrabstero.close_error = close_error
-    _FakeCrabstero.connect_callback = None
+) -> Callable[..., list[object]]:
+    """Return a factory that prepares cli.main for fake-bot lifecycle tests.
 
-    def sd_notify(state: str) -> None:
-        _FakeCrabstero.events.append(("notify", state))
+    Each factory call resets the fake bot, routes systemd notifications into
+    the event log, disables watchdog setup, and makes uvloop.run execute the
+    coroutine synchronously through asyncio.run.
+    """
 
-    monkeypatch.setattr(sys, "argv", ["crabstero", "--token", "cli-token"])
-    monkeypatch.setattr(cli, "Crabstero", _FakeCrabstero)
-    monkeypatch.setattr("crabstero.cli.uvloop.run", _run_coroutine)
-    monkeypatch.setattr(cli, "_sd_notify", sd_notify)
-    monkeypatch.setattr(cli, "_watchdog_interval", lambda: None)
+    def prepare(
+        *,
+        login_error: BaseException | None = None,
+        close_error: BaseException | None = None,
+    ) -> list[object]:
+        events = _FakeCrabstero.reset(
+            login_error=login_error,
+            close_error=close_error,
+        )
 
-    return _FakeCrabstero.events
+        def sd_notify(state: str) -> None:
+            events.append(("notify", state))
+
+        monkeypatch.setattr(sys, "argv", ["crabstero", "--token", "cli-token"])
+        monkeypatch.setattr(cli, "Crabstero", _FakeCrabstero)
+        monkeypatch.setattr("crabstero.cli.uvloop.run", asyncio.run)
+        monkeypatch.setattr(cli, "_sd_notify", sd_notify)
+        monkeypatch.setattr(cli, "_watchdog_interval", lambda: None)
+
+        return events
+
+    return prepare
+
+
+@pytest.fixture
+def signal_handlers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> dict[int, Callable[[], None]]:
+    """Patch signal registration and return captured signal callbacks.
+
+    The returned mapping lets tests invoke registered SIGINT/SIGTERM handlers
+    directly and assert that cleanup removes them.
+    """
+    handlers: dict[int, Callable[[], None]] = {}
+
+    class SignalLoop:
+        """Minimal event-loop facade that stores installed signal handlers."""
+
+        def add_signal_handler(
+            self,
+            sig: int,
+            callback: Callable[..., None],
+            *args: object,
+        ) -> None:
+            handlers[sig] = lambda: callback(*args)
+
+        def remove_signal_handler(self, sig: int) -> None:
+            handlers.pop(sig, None)
+
+    monkeypatch.setattr(asyncio, "get_running_loop", SignalLoop)
+    return handlers
 
 
 class TestParseArgs:
@@ -322,23 +380,6 @@ class TestSystemdNotify:
         monkeypatch.delenv("NOTIFY_SOCKET", raising=False)
         _sd_notify("READY=1")
 
-    def test_sd_notify_sends_datagram(
-        self,
-        tmp_path: Path,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        """_sd_notify sends the payload to NOTIFY_SOCKET."""
-        socket_path = tmp_path / "notify.sock"
-
-        with socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM) as server:
-            server.bind(str(socket_path))
-            server.settimeout(1)
-            monkeypatch.setenv("NOTIFY_SOCKET", str(socket_path))
-
-            _sd_notify("READY=1")
-
-            assert server.recv(1024) == b"READY=1"
-
 
 class TestWatchdog:
     """Systemd watchdog helper behavior."""
@@ -426,10 +467,10 @@ class TestMainLifecycle:
 
     def test_constructs_bot_without_token(
         self,
-        monkeypatch: pytest.MonkeyPatch,
+        prepared_main: Callable[..., list[object]],
     ) -> None:
         """The CLI keeps the Discord token out of Crabstero construction."""
-        events = _prepare_main_test(monkeypatch)
+        events = prepared_main()
 
         assert cli.main() == 0
 
@@ -449,14 +490,12 @@ class TestMainLifecycle:
 
     def test_main_accepts_explicit_argv(
         self,
-        monkeypatch: pytest.MonkeyPatch,
+        prepared_main: Callable[..., list[object]],
     ) -> None:
         """main(argv) runs from explicit arguments instead of sys.argv."""
-        events = _prepare_main_test(monkeypatch)
+        events = prepared_main()
 
-        assert (
-            cli.main(["--token", "argv-token", "--database-path", "/custom.db"]) == 0
-        )
+        assert cli.main(["--token", "argv-token", "--database-path", "/custom.db"]) == 0
 
         assert events[0] == (
             "init",
@@ -470,10 +509,10 @@ class TestMainLifecycle:
 
     def test_ready_sent_after_login_before_connect(
         self,
-        monkeypatch: pytest.MonkeyPatch,
+        prepared_main: Callable[..., list[object]],
     ) -> None:
         """READY=1 is sent after login succeeds and before connect starts."""
-        events = _prepare_main_test(monkeypatch)
+        events = prepared_main()
 
         assert cli.main() == 0
 
@@ -486,10 +525,10 @@ class TestMainLifecycle:
 
     def test_stopping_sent_after_clean_connect_return(
         self,
-        monkeypatch: pytest.MonkeyPatch,
+        prepared_main: Callable[..., list[object]],
     ) -> None:
         """STOPPING=1 is sent when the CLI run exits cleanly after readiness."""
-        events = _prepare_main_test(monkeypatch)
+        events = prepared_main()
 
         assert cli.main() == 0
 
@@ -499,13 +538,10 @@ class TestMainLifecycle:
 
     def test_ready_not_sent_when_login_fails(
         self,
-        monkeypatch: pytest.MonkeyPatch,
+        prepared_main: Callable[..., list[object]],
     ) -> None:
         """A login failure exits without reporting readiness."""
-        events = _prepare_main_test(
-            monkeypatch,
-            login_error=RuntimeError("login failed"),
-        )
+        events = prepared_main(login_error=RuntimeError("login failed"))
 
         with pytest.raises(RuntimeError, match="login failed"):
             cli.main()
@@ -515,32 +551,15 @@ class TestMainLifecycle:
 
     def test_shutdown_task_exception_is_propagated(
         self,
-        monkeypatch: pytest.MonkeyPatch,
+        prepared_main: Callable[..., list[object]],
+        signal_handlers: dict[int, Callable[[], None]],
     ) -> None:
         """A completed shutdown task exception is not silently dropped."""
-        signal_handlers: dict[int, Callable[[], None]] = {}
-
-        class SignalLoop:
-            def add_signal_handler(
-                self,
-                sig: int,
-                callback: Callable[..., None],
-                *args: object,
-            ) -> None:
-                signal_handlers[sig] = lambda: callback(*args)
-
-            def remove_signal_handler(self, sig: int) -> None:
-                signal_handlers.pop(sig, None)
-
-        events = _prepare_main_test(
-            monkeypatch,
-            close_error=RuntimeError("close failed"),
-        )
+        events = prepared_main(close_error=RuntimeError("close failed"))
 
         def request_shutdown() -> None:
             signal_handlers[signal.SIGTERM]()
 
-        monkeypatch.setattr(asyncio, "get_running_loop", SignalLoop)
         _FakeCrabstero.connect_callback = request_shutdown
 
         with pytest.raises(RuntimeError, match="close failed"):
@@ -559,29 +578,15 @@ class TestMainLifecycle:
         self,
         sig: signal.Signals,
         exit_code: int,
-        monkeypatch: pytest.MonkeyPatch,
+        prepared_main: Callable[..., list[object]],
+        signal_handlers: dict[int, Callable[[], None]],
     ) -> None:
         """Signal callbacks preserve SIGINT and SIGTERM CLI exit semantics."""
-        signal_handlers: dict[int, Callable[[], None]] = {}
-
-        class SignalLoop:
-            def add_signal_handler(
-                self,
-                sig: int,
-                callback: Callable[..., None],
-                *args: object,
-            ) -> None:
-                signal_handlers[sig] = lambda: callback(*args)
-
-            def remove_signal_handler(self, sig: int) -> None:
-                signal_handlers.pop(sig, None)
-
-        events = _prepare_main_test(monkeypatch)
+        events = prepared_main()
 
         def request_shutdown() -> None:
             signal_handlers[sig]()
 
-        monkeypatch.setattr(asyncio, "get_running_loop", SignalLoop)
         _FakeCrabstero.connect_callback = request_shutdown
 
         assert cli.main() == exit_code
@@ -591,29 +596,15 @@ class TestMainLifecycle:
 
     def test_registered_signal_during_login_exits_before_ready(
         self,
-        monkeypatch: pytest.MonkeyPatch,
+        prepared_main: Callable[..., list[object]],
+        signal_handlers: dict[int, Callable[[], None]],
     ) -> None:
         """A signal during login cancels startup without reporting readiness."""
-        signal_handlers: dict[int, Callable[[], None]] = {}
-
-        class SignalLoop:
-            def add_signal_handler(
-                self,
-                sig: int,
-                callback: Callable[..., None],
-                *args: object,
-            ) -> None:
-                signal_handlers[sig] = lambda: callback(*args)
-
-            def remove_signal_handler(self, sig: int) -> None:
-                signal_handlers.pop(sig, None)
-
-        events = _prepare_main_test(monkeypatch)
+        events = prepared_main()
 
         def request_shutdown() -> None:
             signal_handlers[signal.SIGINT]()
 
-        monkeypatch.setattr(asyncio, "get_running_loop", SignalLoop)
         _FakeCrabstero.login_callback = request_shutdown
 
         assert cli.main() == 130

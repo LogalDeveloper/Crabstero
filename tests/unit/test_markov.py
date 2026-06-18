@@ -15,14 +15,14 @@
 """Unit tests for Markov chain ingestion and generation.
 
 Tests cover is_complete_sentence, _ingest_sentence, ingest, and generate
-from crabstero.markov.
+from crabstero.markov without crossing the SQLite database boundary.
 """
 
-from typing import TYPE_CHECKING
+import contextlib
 
 import pytest
 
-from crabstero.database import StartWord, Transition
+from crabstero.database import Database, StartWord, Transition
 from crabstero.markov import (
     DEFAULT_SENTENCE_END,
     _ingest_sentence,
@@ -33,8 +33,80 @@ from crabstero.markov import (
     uningest,
 )
 
-if TYPE_CHECKING:
-    from crabstero.database import Database
+
+class _FakeMarkovDatabase(Database):
+    """In-memory Markov store with deterministic first-row selection.
+
+    The fake preserves duplicate rows and one-row-at-a-time removal semantics
+    so ingestion and uningestion tests can stay below the SQLite boundary.
+    """
+
+    def __init__(self) -> None:
+        self.start_words: list[StartWord] = []
+        self.transitions: list[Transition] = []
+
+    async def add_markov_data(
+        self,
+        start_words: list[StartWord],
+        transitions: list[Transition],
+    ) -> None:
+        """Record Markov rows exactly as the application would write them."""
+        self.start_words.extend(start_words)
+        self.transitions.extend(transitions)
+
+    async def remove_markov_data(
+        self,
+        start_words: list[StartWord],
+        transitions: list[Transition],
+    ) -> None:
+        """Remove at most one matching row per requested Markov row."""
+        for start_word in start_words:
+            with contextlib.suppress(ValueError):
+                self.start_words.remove(start_word)
+        for transition in transitions:
+            with contextlib.suppress(ValueError):
+                self.transitions.remove(transition)
+
+    async def get_random_start_word(self, channel_id: int) -> str | None:
+        """Return the first start word for deterministic generation tests."""
+        return next(
+            (row.word for row in self.start_words if row.channel_id == channel_id),
+            None,
+        )
+
+    async def get_random_next_word(self, channel_id: int, word: str) -> str | None:
+        """Return the first matching transition for deterministic tests."""
+        return next(
+            (
+                row.next_word
+                for row in self.transitions
+                if row.channel_id == channel_id and row.word == word
+            ),
+            None,
+        )
+
+    async def get_random_completing_next_word(
+        self,
+        channel_id: int,
+        word: str,
+    ) -> str | None:
+        """Return the first sentence-ending transition for deterministic tests."""
+        return next(
+            (
+                row.next_word
+                for row in self.transitions
+                if row.channel_id == channel_id
+                and row.word == word
+                and is_complete_sentence(row.next_word)
+            ),
+            None,
+        )
+
+
+@pytest.fixture
+def markov_db() -> _FakeMarkovDatabase:
+    """Return an isolated deterministic Markov store for one test."""
+    return _FakeMarkovDatabase()
 
 
 class TestIsCompleteSentence:
@@ -61,83 +133,93 @@ class TestIsCompleteSentence:
 class TestIngestSentence:
     """Single sentence ingestion into the Markov chain."""
 
-    async def test_stores_start_word(self, db: Database) -> None:
+    async def test_stores_start_word(self, markov_db: _FakeMarkovDatabase) -> None:
         """First word of the sentence is stored as a start word."""
-        await _ingest_sentence(db, 1, 100, "Hello world.")
+        await _ingest_sentence(markov_db, 1, 100, "Hello world.")
 
-        result = await db.get_random_start_word(1)
-        assert result == "Hello"
+        assert markov_db.start_words == [StartWord(1, 100, "Hello")]
 
-    async def test_stores_transitions(self, db: Database) -> None:
+    async def test_stores_transitions(self, markov_db: _FakeMarkovDatabase) -> None:
         """Adjacent words create transitions."""
-        await _ingest_sentence(db, 1, 100, "Hello world.")
+        await _ingest_sentence(markov_db, 1, 100, "Hello world.")
 
-        result = await db.get_random_next_word(1, "Hello")
-        assert result == "world."
+        assert markov_db.transitions == [Transition(1, 100, "Hello", "world.")]
 
-    async def test_appends_sentence_end_if_missing(self, db: Database) -> None:
+    async def test_appends_sentence_end_if_missing(
+        self,
+        markov_db: _FakeMarkovDatabase,
+    ) -> None:
         """Unpunctuated sentence gets the default sentence-end marker."""
-        await _ingest_sentence(db, 1, 100, "Hello world")
+        await _ingest_sentence(markov_db, 1, 100, "Hello world")
 
-        result = await db.get_random_next_word(1, "Hello")
-        assert result == f"world{DEFAULT_SENTENCE_END}"
+        assert markov_db.transitions == [
+            Transition(1, 100, "Hello", f"world{DEFAULT_SENTENCE_END}"),
+        ]
 
-    async def test_preserves_existing_punctuation(self, db: Database) -> None:
+    async def test_preserves_existing_punctuation(
+        self,
+        markov_db: _FakeMarkovDatabase,
+    ) -> None:
         """Already-punctuated sentence keeps its terminator."""
-        await _ingest_sentence(db, 1, 100, "Hello world!")
+        await _ingest_sentence(markov_db, 1, 100, "Hello world!")
 
-        result = await db.get_random_next_word(1, "Hello")
-        assert result == "world!"
+        assert markov_db.transitions == [Transition(1, 100, "Hello", "world!")]
 
-    async def test_single_word_stores_nothing(self, db: Database) -> None:
+    async def test_single_word_stores_nothing(
+        self,
+        markov_db: _FakeMarkovDatabase,
+    ) -> None:
         """A single-word sentence produces no start words or transitions."""
-        await _ingest_sentence(db, 1, 100, "Hello.")
+        await _ingest_sentence(markov_db, 1, 100, "Hello.")
 
-        assert await db.get_random_start_word(1) is None
-        assert await db.get_random_next_word(1, "Hello.") is None
+        assert markov_db.start_words == []
+        assert markov_db.transitions == []
 
-    async def test_stores_all_transitions(self, db: Database) -> None:
+    async def test_stores_all_transitions(
+        self,
+        markov_db: _FakeMarkovDatabase,
+    ) -> None:
         """All adjacent word pairs create transitions."""
-        await _ingest_sentence(db, 1, 100, "A B C.")
+        await _ingest_sentence(markov_db, 1, 100, "A B C.")
 
-        assert await db.get_random_next_word(1, "A") == "B"
-        assert await db.get_random_next_word(1, "B") == "C."
+        assert markov_db.transitions == [
+            Transition(1, 100, "A", "B"),
+            Transition(1, 100, "B", "C."),
+        ]
 
 
 class TestIngestParagraph:
     """Paragraph ingestion splits into sentences."""
 
-    async def test_single_sentence(self, db: Database) -> None:
+    async def test_single_sentence(self, markov_db: _FakeMarkovDatabase) -> None:
         """A single sentence paragraph is ingested."""
-        await ingest(db, 1, 100, "Hello world.")
+        await ingest(markov_db, 1, 100, "Hello world.")
 
-        assert await db.get_random_start_word(1) == "Hello"
+        assert markov_db.start_words == [StartWord(1, 100, "Hello")]
 
-    async def test_multiple_sentences(self, db: Database) -> None:
+    async def test_multiple_sentences(self, markov_db: _FakeMarkovDatabase) -> None:
         """Multiple sentences are split and ingested individually."""
-        await ingest(db, 1, 100, "Hello world. Goodbye world!")
+        await ingest(markov_db, 1, 100, "Hello world. Goodbye world!")
 
-        # Both "Hello" and "Goodbye" should appear as start words.
-        async with db._connection.execute(
-            "SELECT DISTINCT word FROM markov_start_words WHERE channel_id = ?",
-            (1,),
-        ) as cursor:
-            start_words = {row[0] for row in await cursor.fetchall()}
-        assert start_words == {"Hello", "Goodbye"}
+        assert {row.word for row in markov_db.start_words} == {"Hello", "Goodbye"}
 
-    async def test_normalizes_whitespace(self, db: Database) -> None:
+    async def test_normalizes_whitespace(
+        self,
+        markov_db: _FakeMarkovDatabase,
+    ) -> None:
         """Extra spaces and newlines are collapsed."""
-        await ingest(db, 1, 100, "Hello   world.\nGoodbye  world!")
+        await ingest(markov_db, 1, 100, "Hello   world.\nGoodbye  world!")
 
-        result = await db.get_random_next_word(1, "Hello")
-        assert result == "world."
+        assert Transition(1, 100, "Hello", "world.") in markov_db.transitions
+        assert Transition(1, 100, "Goodbye", "world!") in markov_db.transitions
 
-    async def test_appends_default_end(self, db: Database) -> None:
+    async def test_appends_default_end(self, markov_db: _FakeMarkovDatabase) -> None:
         """Unpunctuated paragraph gets the default sentence-end marker."""
-        await ingest(db, 1, 100, "Hello world")
+        await ingest(markov_db, 1, 100, "Hello world")
 
-        result = await db.get_random_next_word(1, "Hello")
-        assert result == f"world{DEFAULT_SENTENCE_END}"
+        assert markov_db.transitions == [
+            Transition(1, 100, "Hello", f"world{DEFAULT_SENTENCE_END}"),
+        ]
 
     @pytest.mark.parametrize(
         "paragraph",
@@ -148,72 +230,91 @@ class TestIngestParagraph:
     )
     async def test_empty_input_stores_nothing(
         self,
-        db: Database,
+        markov_db: _FakeMarkovDatabase,
         paragraph: str,
     ) -> None:
         """Empty or whitespace-only input does not store any data."""
-        await ingest(db, 1, 100, paragraph)
+        await ingest(markov_db, 1, 100, paragraph)
 
-        assert await db.get_random_start_word(1) is None
+        assert markov_db.start_words == []
+        assert markov_db.transitions == []
 
-    async def test_splits_on_punctuation_followed_by_space(self, db: Database) -> None:
+    async def test_splits_on_punctuation_followed_by_space(
+        self,
+        markov_db: _FakeMarkovDatabase,
+    ) -> None:
         """Punctuation followed by a space splits into separate sentences."""
-        await ingest(db, 1, 100, "Dr. Smith likes cats")
+        await ingest(markov_db, 1, 100, "Dr. Smith likes cats")
 
         # "Dr." splits off as a single-word sentence (stores nothing).
         # "Smith likes cats" becomes a sentence with "Smith" as start word.
-        assert await db.get_random_start_word(1) == "Smith"
+        assert markov_db.start_words == [StartWord(1, 100, "Smith")]
 
-    async def test_no_split_without_space_after_punctuation(self, db: Database) -> None:
+    async def test_no_split_without_space_after_punctuation(
+        self,
+        markov_db: _FakeMarkovDatabase,
+    ) -> None:
         """Punctuation not followed by a space keeps words together."""
-        await ingest(db, 1, 100, "Hello.World is here")
+        await ingest(markov_db, 1, 100, "Hello.World is here")
 
-        assert await db.get_random_start_word(1) == "Hello.World"
+        assert markov_db.start_words == [StartWord(1, 100, "Hello.World")]
 
 
 class TestGenerate:
     """Markov chain text generation."""
 
-    async def test_fallback_on_empty_channel(self, db: Database) -> None:
+    async def test_fallback_on_empty_channel(
+        self,
+        markov_db: _FakeMarkovDatabase,
+    ) -> None:
         """Returns an informational message when the channel has no data."""
-        result = await generate(db, 1)
+        result = await generate(markov_db, 1)
         expected = (
             "I do not have enough data to generate a message yet."
             " Chat a bit more so I can learn how this channel talks."
         )
         assert result == expected
 
-    async def test_generates_from_ingested_data(self, db: Database) -> None:
+    async def test_generates_from_ingested_data(
+        self,
+        markov_db: _FakeMarkovDatabase,
+    ) -> None:
         """Generated text uses words from ingested data."""
-        await ingest(db, 1, 100, "The quick brown fox.")
+        await ingest(markov_db, 1, 100, "The quick brown fox.")
 
-        result = await generate(db, 1)
+        result = await generate(markov_db, 1)
         assert result == "The quick brown fox."
 
-    async def test_strips_section_sign(self, db: Database) -> None:
+    async def test_strips_section_sign(self, markov_db: _FakeMarkovDatabase) -> None:
         """The internal section sign marker never appears in output."""
-        await ingest(db, 1, 100, "Hello world")
+        await ingest(markov_db, 1, 100, "Hello world")
 
-        result = await generate(db, 1)
+        result = await generate(markov_db, 1)
         assert result == "Hello world"
 
-    async def test_respects_hard_limit(self, db: Database) -> None:
+    async def test_respects_hard_limit(
+        self,
+        markov_db: _FakeMarkovDatabase,
+    ) -> None:
         """Output is truncated at hard_limit."""
         words = [f"w{i}" for i in range(100)]
         text = " ".join(words)
-        await ingest(db, 1, 100, text)
+        await ingest(markov_db, 1, 100, text)
 
-        result = await generate(db, 1, soft_limit=10, hard_limit=49)
+        result = await generate(markov_db, 1, soft_limit=10, hard_limit=49)
         assert result == "w0 w1 w2 w3 w4 w5 w6 w7 w8 w9 w10 w11 w12 w13 w14"
 
-    async def test_prefers_completing_word_after_soft_limit(self, db: Database) -> None:
+    async def test_prefers_completing_word_after_soft_limit(
+        self,
+        markov_db: _FakeMarkovDatabase,
+    ) -> None:
         """After soft_limit, generation prefers completing words."""
-        # Chain: A → B → C → D → {E, "end."}
+        # Chain: A -> B -> C -> D -> {E, "end."}
         # A, B, C have only non-completing transitions, so past the soft limit
         # the loop falls back to get_random_next_word for each. D has both a
         # continuing ("E") and completing ("end.") transition, so
         # get_random_completing_next_word deterministically picks "end.".
-        await db.add_markov_data(
+        await markov_db.add_markov_data(
             [StartWord(1, 100, "A")],
             [
                 Transition(1, 100, "A", "B"),
@@ -227,29 +328,32 @@ class TestGenerate:
             ],
         )
 
-        for _ in range(100):
-            result = await generate(db, 1, soft_limit=1, hard_limit=1000)
-            assert result == "A B C D end."
+        result = await generate(markov_db, 1, soft_limit=1, hard_limit=1000)
+        assert result == "A B C D end."
 
-    async def test_start_word_already_ends_sentence(self, db: Database) -> None:
+    async def test_start_word_already_ends_sentence(
+        self,
+        markov_db: _FakeMarkovDatabase,
+    ) -> None:
         """Generation stops immediately when the start word is sentence-ending."""
-        await db.add_markov_data([StartWord(1, 100, "Yes.")], [])
+        await markov_db.add_markov_data([StartWord(1, 100, "Yes.")], [])
 
-        result = await generate(db, 1)
+        result = await generate(markov_db, 1)
         assert result == "Yes."
 
-    async def test_chain_dead_end(self, db: Database) -> None:
+    async def test_chain_dead_end(self, markov_db: _FakeMarkovDatabase) -> None:
         """Generation stops when no next word exists (dead-end chain)."""
-        await db.add_markov_data([StartWord(1, 100, "Hello")], [])
+        await markov_db.add_markov_data([StartWord(1, 100, "Hello")], [])
 
-        # "Hello" has no transitions, so the loop breaks immediately.
-        result = await generate(db, 1)
+        result = await generate(markov_db, 1)
         assert result == "Hello"
 
-    async def test_hard_limit_strips_section_sign(self, db: Database) -> None:
+    async def test_hard_limit_strips_section_sign(
+        self,
+        markov_db: _FakeMarkovDatabase,
+    ) -> None:
         """Section sign at the truncation boundary is stripped."""
-        # Build a chain: "A" -> "B" -> "C§".
-        await db.add_markov_data(
+        await markov_db.add_markov_data(
             [StartWord(1, 100, "A")],
             [
                 Transition(1, 100, "A", "B"),
@@ -257,43 +361,41 @@ class TestGenerate:
             ],
         )
 
-        # hard_limit=5 truncates "A B C§" (length 6) to "A B C".
-        result = await generate(db, 1, soft_limit=100, hard_limit=5)
+        result = await generate(markov_db, 1, soft_limit=100, hard_limit=6)
         assert result == "A B C"
 
     async def test_soft_limit_falls_back_to_regular_next_word(
         self,
-        db: Database,
+        markov_db: _FakeMarkovDatabase,
     ) -> None:
         """After soft_limit, falls back when no completing word exists."""
-        # "A" -> "B" (no completing transition). Past soft_limit,
-        # get_random_completing_next_word returns None, falls back to "B".
-        await db.add_markov_data(
+        await markov_db.add_markov_data(
             [StartWord(1, 100, "A")],
             [Transition(1, 100, "A", "B")],
         )
 
-        result = await generate(db, 1, soft_limit=1, hard_limit=1000)
+        result = await generate(markov_db, 1, soft_limit=1, hard_limit=1000)
         assert result == "A B"
 
-    async def test_hard_limit_truncates_mid_word(self, db: Database) -> None:
+    async def test_hard_limit_truncates_mid_word(
+        self,
+        markov_db: _FakeMarkovDatabase,
+    ) -> None:
         """Hard limit slices output even when it falls inside a word."""
-        await db.add_markov_data(
+        await markov_db.add_markov_data(
             [StartWord(1, 100, "AB")],
             [Transition(1, 100, "AB", "CDEF")],
         )
 
-        # "AB CDEF" is 7 chars; hard_limit=5 truncates to "AB CD".
-        result = await generate(db, 1, soft_limit=100, hard_limit=5)
+        result = await generate(markov_db, 1, soft_limit=100, hard_limit=5)
         assert result == "AB CD"
 
-    async def test_channel_isolation(self, db: Database) -> None:
+    async def test_channel_isolation(self, markov_db: _FakeMarkovDatabase) -> None:
         """Data ingested into one channel does not leak into another."""
-        await ingest(db, 1, 100, "Channel one data.")
-        await ingest(db, 2, 100, "Channel two data.")
+        await ingest(markov_db, 1, 100, "Channel one data.")
+        await ingest(markov_db, 2, 100, "Channel two data.")
 
-        # Channel 3 has no data; should get the fallback.
-        result = await generate(db, 3)
+        result = await generate(markov_db, 3)
         expected = (
             "I do not have enough data to generate a message yet."
             " Chat a bit more so I can learn how this channel talks."
@@ -304,45 +406,65 @@ class TestGenerate:
 class TestUningestSentence:
     """Single sentence uningest from the Markov chain."""
 
-    async def test_removes_start_word_and_transition(self, db: Database) -> None:
+    async def test_removes_start_word_and_transition(
+        self,
+        markov_db: _FakeMarkovDatabase,
+    ) -> None:
         """Uningest removes the start word and transition added by ingest."""
-        await _ingest_sentence(db, 1, 100, "Hello world.")
-        await _uningest_sentence(db, 1, 100, "Hello world.")
-        assert await db.get_random_start_word(1) is None
-        assert await db.get_random_next_word(1, "Hello") is None
+        await _ingest_sentence(markov_db, 1, 100, "Hello world.")
+        await _uningest_sentence(markov_db, 1, 100, "Hello world.")
+        assert markov_db.start_words == []
+        assert markov_db.transitions == []
 
-    async def test_preserves_other_data(self, db: Database) -> None:
+    async def test_preserves_other_data(
+        self,
+        markov_db: _FakeMarkovDatabase,
+    ) -> None:
         """Uningest only removes data for the specified sentence."""
-        await _ingest_sentence(db, 1, 100, "Hello world.")
-        await _ingest_sentence(db, 1, 100, "Goodbye world.")
-        await _uningest_sentence(db, 1, 100, "Hello world.")
-        assert await db.get_random_start_word(1) == "Goodbye"
+        await _ingest_sentence(markov_db, 1, 100, "Hello world.")
+        await _ingest_sentence(markov_db, 1, 100, "Goodbye world.")
+        await _uningest_sentence(markov_db, 1, 100, "Hello world.")
+        assert markov_db.start_words == [StartWord(1, 100, "Goodbye")]
+        assert markov_db.transitions == [Transition(1, 100, "Goodbye", "world.")]
 
-    async def test_handles_missing_punctuation(self, db: Database) -> None:
+    async def test_handles_missing_punctuation(
+        self,
+        markov_db: _FakeMarkovDatabase,
+    ) -> None:
         """Uningest appends the default sentence end, matching ingest behavior."""
-        await _ingest_sentence(db, 1, 100, "Hello world")
-        await _uningest_sentence(db, 1, 100, "Hello world")
-        assert await db.get_random_start_word(1) is None
+        await _ingest_sentence(markov_db, 1, 100, "Hello world")
+        await _uningest_sentence(markov_db, 1, 100, "Hello world")
+        assert markov_db.start_words == []
+        assert markov_db.transitions == []
 
-    async def test_single_word_is_noop(self, db: Database) -> None:
+    async def test_single_word_is_noop(self, markov_db: _FakeMarkovDatabase) -> None:
         """Uningesting a single-word sentence does not error."""
-        await _ingest_sentence(db, 1, 100, "Hello.")
-        await _uningest_sentence(db, 1, 100, "Hello.")
+        await _ingest_sentence(markov_db, 1, 100, "Hello.")
+        await _uningest_sentence(markov_db, 1, 100, "Hello.")
+        assert markov_db.start_words == []
+        assert markov_db.transitions == []
 
 
 class TestUningestParagraph:
     """Paragraph-level uningest."""
 
-    async def test_uningest_multiple_sentences(self, db: Database) -> None:
+    async def test_uningest_multiple_sentences(
+        self,
+        markov_db: _FakeMarkovDatabase,
+    ) -> None:
         """Uningest reverses a multi-sentence paragraph."""
-        await ingest(db, 1, 100, "Hello world. Goodbye world!")
-        await uningest(db, 1, 100, "Hello world. Goodbye world!")
-        assert await db.get_random_start_word(1) is None
+        await ingest(markov_db, 1, 100, "Hello world. Goodbye world!")
+        await uningest(markov_db, 1, 100, "Hello world. Goodbye world!")
+        assert markov_db.start_words == []
+        assert markov_db.transitions == []
 
-    async def test_uningest_preserves_duplicate_data(self, db: Database) -> None:
+    async def test_uningest_preserves_duplicate_data(
+        self,
+        markov_db: _FakeMarkovDatabase,
+    ) -> None:
         """Uningesting one copy leaves the other intact."""
-        await ingest(db, 1, 100, "Hello world.")
-        await ingest(db, 1, 100, "Hello world.")
-        await uningest(db, 1, 100, "Hello world.")
-        assert await db.get_random_start_word(1) == "Hello"
-        assert await db.get_random_next_word(1, "Hello") == "world."
+        await ingest(markov_db, 1, 100, "Hello world.")
+        await ingest(markov_db, 1, 100, "Hello world.")
+        await uningest(markov_db, 1, 100, "Hello world.")
+        assert markov_db.start_words == [StartWord(1, 100, "Hello")]
+        assert markov_db.transitions == [Transition(1, 100, "Hello", "world.")]

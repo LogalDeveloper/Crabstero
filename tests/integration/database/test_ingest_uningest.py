@@ -14,8 +14,10 @@
 
 """Integration tests for the full ingest → uningest cycle."""
 
+from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
 
+import aiosqlite
 import pytest
 
 from crabstero.cache import CachedMessage, IngestCache
@@ -24,18 +26,31 @@ from crabstero.markov import ingest, uningest
 from crabstero.messages import uningest_message
 
 if TYPE_CHECKING:
-    import aiosqlite
-
     from crabstero.database import Database
 
+type SnapshotRows = Callable[["Database"], Awaitable[dict[str, list[aiosqlite.Row]]]]
 
-async def _snapshot(db: Database) -> dict[str, list[aiosqlite.Row]]:
-    """Return sorted rows from all Markov-related tables."""
-    tables: dict[str, list[aiosqlite.Row]] = {}
-    for table in ("markov_start_words", "markov_transitions", "channel_images"):
-        async with db._connection.execute(f"SELECT * FROM {table}") as cursor:  # noqa: S608
-            tables[table] = sorted(await cursor.fetchall())
-    return tables
+
+@pytest.fixture
+def snapshot_rows() -> SnapshotRows:
+    """Return a snapshot reader for Markov and image tables."""
+
+    async def read(db: Database) -> dict[str, list[aiosqlite.Row]]:
+        tables: dict[str, list[aiosqlite.Row]] = {}
+        for table in ("markov_start_words", "markov_transitions", "channel_images"):
+            async with db._connection.execute(
+                f"SELECT * FROM {table}",  # noqa: S608
+            ) as cursor:
+                tables[table] = sorted(await cursor.fetchall())
+        return tables
+
+    return read
+
+
+@pytest.fixture
+def ingest_cache() -> IngestCache:
+    """Return an empty ingest cache for uningest-message tests."""
+    return IngestCache()
 
 
 class TestIngestUningestCycle:
@@ -114,12 +129,17 @@ class TestUningestRestoresState:
             ),
         ],
     )
-    async def test_uningest_restores_empty_db(self, db: Database, text: str) -> None:
+    async def test_uningest_restores_empty_db(
+        self,
+        db: Database,
+        text: str,
+        snapshot_rows: SnapshotRows,
+    ) -> None:
         """Ingest then uningest on an empty database leaves all tables empty."""
-        before = await _snapshot(db)
+        before = await snapshot_rows(db)
         await ingest(db, 1, 100, text)
         await uningest(db, 1, 100, text)
-        after = await _snapshot(db)
+        after = await snapshot_rows(db)
         assert after == before
 
     @pytest.mark.parametrize(
@@ -136,26 +156,26 @@ class TestUningestRestoresState:
         self,
         db: Database,
         text: str,
+        snapshot_rows: SnapshotRows,
     ) -> None:
         """Ingest then uningest preserves unrelated pre-existing data exactly."""
         await ingest(db, 99, 200, "Pre-existing data stays safe.")
         await db.add_images([ChannelImage(99, 200, "https://example.com/existing.png")])
 
-        before = await _snapshot(db)
+        before = await snapshot_rows(db)
         await ingest(db, 1, 100, text)
         await uningest(db, 1, 100, text)
-        after = await _snapshot(db)
+        after = await snapshot_rows(db)
         assert after == before
 
 
 class TestUningestMessage:
     """Orchestrated uningest via cache lookup and database reversal."""
 
-    async def test_content_only(self, db: Database) -> None:
+    async def test_content_only(self, db: Database, ingest_cache: IngestCache) -> None:
         """Uningest reverses a content-only message via the cache."""
         await ingest(db, 1, 100, "Hello beautiful world.")
-        cache = IngestCache()
-        cache.put(
+        ingest_cache.put(
             555,
             CachedMessage(
                 channel_id=1,
@@ -166,17 +186,16 @@ class TestUningestMessage:
             ),
         )
 
-        await uningest_message(db, cache, 555)
+        await uningest_message(db, ingest_cache, 555)
 
         assert await db.get_random_start_word(1) is None
         assert await db.get_random_next_word(1, "Hello") is None
 
-    async def test_embeds_only(self, db: Database) -> None:
+    async def test_embeds_only(self, db: Database, ingest_cache: IngestCache) -> None:
         """Uningest reverses embed text ingestion."""
         await ingest(db, 1, 100, "Embed title here.")
         await ingest(db, 1, 100, "Embed description here.")
-        cache = IngestCache()
-        cache.put(
+        ingest_cache.put(
             556,
             CachedMessage(
                 channel_id=1,
@@ -187,17 +206,20 @@ class TestUningestMessage:
             ),
         )
 
-        await uningest_message(db, cache, 556)
+        await uningest_message(db, ingest_cache, 556)
 
         assert await db.get_random_start_word(1) is None
 
-    async def test_content_with_embeds_and_images(self, db: Database) -> None:
+    async def test_content_with_embeds_and_images(
+        self,
+        db: Database,
+        ingest_cache: IngestCache,
+    ) -> None:
         """Uningest reverses content, embed text, and image data together."""
         await ingest(db, 1, 100, "Body text here.")
         await ingest(db, 1, 100, "Embed title.")
         await db.add_images([ChannelImage(1, 100, "https://example.com/img.png")])
-        cache = IngestCache()
-        cache.put(
+        ingest_cache.put(
             557,
             CachedMessage(
                 channel_id=1,
@@ -208,28 +230,35 @@ class TestUningestMessage:
             ),
         )
 
-        await uningest_message(db, cache, 557)
+        await uningest_message(db, ingest_cache, 557)
 
         assert await db.get_random_start_word(1) is None
         assert await db.get_random_image(1) is None
 
-    async def test_cache_miss_is_noop(self, db: Database) -> None:
+    async def test_cache_miss_is_noop(
+        self,
+        db: Database,
+        ingest_cache: IngestCache,
+        snapshot_rows: SnapshotRows,
+    ) -> None:
         """A message not in the cache leaves the database unchanged."""
         await ingest(db, 1, 100, "Keep this data.")
-        cache = IngestCache()
-        before = await _snapshot(db)
+        before = await snapshot_rows(db)
 
-        await uningest_message(db, cache, 999)
+        await uningest_message(db, ingest_cache, 999)
 
-        after = await _snapshot(db)
+        after = await snapshot_rows(db)
         assert after == before
 
-    async def test_preserves_other_messages(self, db: Database) -> None:
+    async def test_preserves_other_messages(
+        self,
+        db: Database,
+        ingest_cache: IngestCache,
+    ) -> None:
         """Uningesting one message leaves another message's data intact."""
         await ingest(db, 1, 100, "First message.")
         await ingest(db, 1, 100, "Second message.")
-        cache = IngestCache()
-        cache.put(
+        ingest_cache.put(
             601,
             CachedMessage(
                 channel_id=1,
@@ -240,16 +269,19 @@ class TestUningestMessage:
             ),
         )
 
-        await uningest_message(db, cache, 601)
+        await uningest_message(db, ingest_cache, 601)
 
         assert await db.get_random_start_word(1) == "Second"
         assert await db.get_random_next_word(1, "Second") == "message."
 
-    async def test_pops_entry_from_cache(self, db: Database) -> None:
+    async def test_pops_entry_from_cache(
+        self,
+        db: Database,
+        ingest_cache: IngestCache,
+    ) -> None:
         """The cache entry is consumed after uningest."""
         await ingest(db, 1, 100, "Hello world.")
-        cache = IngestCache()
-        cache.put(
+        ingest_cache.put(
             602,
             CachedMessage(
                 channel_id=1,
@@ -260,6 +292,6 @@ class TestUningestMessage:
             ),
         )
 
-        await uningest_message(db, cache, 602)
+        await uningest_message(db, ingest_cache, 602)
 
-        assert cache.pop(602) is None
+        assert ingest_cache.pop(602) is None

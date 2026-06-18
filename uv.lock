@@ -337,6 +337,7 @@ dev = [
     { name = "pytest-asyncio" },
     { name = "pytest-cov" },
     { name = "ruff" },
+    { name = "simcord" },
 ]
 
 [package.metadata]
@@ -357,6 +358,7 @@ dev = [
     { name = "pytest-asyncio", specifier = ">=1.4.0" },
     { name = "pytest-cov", specifier = ">=7.1.0" },
     { name = "ruff", specifier = ">=0.15.16" },
+    { name = "simcord", specifier = "==1.0.1" },
 ]
 
 [[package]]
@@ -920,6 +922,18 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/74/0d/f2cd247ad32633a5c36e97141a2c21b11c6279f7957bc2ff360b1e08fddd/ruff-0.15.16-py3-none-win32.whl", hash = "sha256:580378f7bd4aa25f72e74aa54948a9622f142b1e509521dd10902e886681cc1e", size = 10735541, upload-time = "2026-06-04T16:32:30.145Z" },
     { url = "https://files.pythonhosted.org/packages/8b/9e/02e845ef151b1dee585e55c4739f8e1734ae1d9f1221dff65761c162208b/ruff-0.15.16-py3-none-win_amd64.whl", hash = "sha256:408256017284eddf98fff77b29aa4fb30f586042d535b2d9befc6512f400aaec", size = 11843403, upload-time = "2026-06-04T16:32:39.76Z" },
     { url = "https://files.pythonhosted.org/packages/15/19/016553f86f207450aebebc2b2b5088d086b901cc8186c02ac4284db3bd88/ruff-0.15.16-py3-none-win_arm64.whl", hash = "sha256:8cd61783afb39638a7133ef0d2dfb1e91277593962f81b5a8423eb0b888a6121", size = 11134555, upload-time = "2026-06-04T16:33:00.136Z" },
+]
+
+[[package]]
+name = "simcord"
+version = "1.0.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "discord-py" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/3d/91/6c7d14a1c3421db4aa28ca2085d890861dcbb50ea06c2a146fb4f88f25de/simcord-1.0.1.tar.gz", hash = "sha256:6c15b379d40fe9a0aa049e9113169af7b4d13b48c09fe36042876ab66d263611", size = 351638, upload-time = "2026-06-17T23:39:03.403Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/e3/1a/2f9db78d897a76174668da358fbdf90de76b792a2f5c5d4621b57b3c9beb/simcord-1.0.1-py3-none-any.whl", hash = "sha256:6cd326fb77b7edee0bab749633eee6610b4b947ab59fc9528e6b37f76d5a1c30", size = 120475, upload-time = "2026-06-17T23:39:01.931Z" },
 ]
 
 [[package]]

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Unit tests for the Database class.
+"""Integration tests for the Database class.
 
 Tests cover Database.connect (pragmas, schema), markov start word and
 transition CRUD, image storage, flag CRUD, and channel ingestion tracking.
@@ -509,21 +509,21 @@ class TestTransactionRollback:
 
     async def test_error_rolls_back_insert(self, db: Database) -> None:
         """An error during a transaction prevents partial data from persisting."""
-        with pytest.raises(RuntimeError, match="simulated"):
-            await self._insert_and_fail(db)
-        assert await db.get_random_start_word(1) is None
 
-    @staticmethod
-    async def _insert_and_fail(db: Database) -> None:
-        async with db._transaction():
-            await db._connection.execute(
-                "INSERT INTO markov_start_words"
-                " (channel_id, user_id, word)"
-                " VALUES (?, ?, ?)",
-                (1, 100, "should_not_persist"),
-            )
-            msg = "simulated failure"
-            raise RuntimeError(msg)
+        async def insert_and_fail() -> None:
+            async with db._transaction():
+                await db._connection.execute(
+                    "INSERT INTO markov_start_words"
+                    " (channel_id, user_id, word)"
+                    " VALUES (?, ?, ?)",
+                    (1, 100, "should_not_persist"),
+                )
+                msg = "simulated failure"
+                raise RuntimeError(msg)
+
+        with pytest.raises(RuntimeError, match="simulated"):
+            await insert_and_fail()
+        assert await db.get_random_start_word(1) is None
 
 
 class TestForgetUser:
@@ -629,13 +629,17 @@ class TestWriteDurability:
         """Data written via add_markov_data is durable after close/reopen."""
         db_path = str(tmp_path / "durability.db")
         db = await Database.connect(db_path)
-        await db.add_markov_data(
-            [StartWord(1, 100, "Hello")],
-            [Transition(1, 100, "Hello", "world.")],
-        )
-        await db.close()
+        try:
+            await db.add_markov_data(
+                [StartWord(1, 100, "Hello")],
+                [Transition(1, 100, "Hello", "world.")],
+            )
+        finally:
+            await db.close()
 
         db2 = await Database.connect(db_path)
-        assert await db2.get_random_start_word(1) == "Hello"
-        assert await db2.get_random_next_word(1, "Hello") == "world."
-        await db2.close()
+        try:
+            assert await db2.get_random_start_word(1) == "Hello"
+            assert await db2.get_random_next_word(1, "Hello") == "world."
+        finally:
+            await db2.close()

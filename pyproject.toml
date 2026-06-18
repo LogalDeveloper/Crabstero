@@ -30,6 +30,7 @@ dev = [
     "pytest-asyncio>=1.4.0",
     "pytest-cov>=7.1.0",
     "ruff>=0.15.16",
+    "simcord==1.0.1",
 ]
 
 [tool.uv]
@@ -59,12 +60,16 @@ mypy_path = "$MYPY_CONFIG_FILE_DIR/src"
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
+asyncio_default_test_loop_scope = "function"
 testpaths = ["tests"]
-pythonpath = ["src"]
 addopts = [
     "--import-mode=importlib",
     "--strict-config",
     "--strict-markers",
+]
+markers = [
+    "unit: fast, deterministic tests that do not cross real external boundaries",
+    "integration: tests that exercise real local boundaries such as SQLite, sockets, CLI wiring, Discord simulation, or service lifecycle",
 ]
 xfail_strict = true
 
@@ -111,3 +116,4 @@ omit = [
 [tool.coverage.report]
 show_missing = true
 skip_empty = true
+fail_under = 95

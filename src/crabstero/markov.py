@@ -14,9 +14,8 @@
 
 """Markov chain sentence ingestion and generation backed by SQLite.
 
-The Markov chain stores word transitions per channel, using duplicate rows
-to represent frequency weight. Random selection via ORDER BY RANDOM()
-LIMIT 1 naturally preserves this weighting.
+The Markov chain stores word transitions per channel, using occurrence counters
+to represent frequency weight.
 """
 
 import itertools

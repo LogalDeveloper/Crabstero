@@ -37,8 +37,8 @@ from crabstero.markov import (
 class _FakeMarkovDatabase(Database):
     """In-memory Markov store with deterministic first-row selection.
 
-    The fake preserves duplicate rows and one-row-at-a-time removal semantics
-    so ingestion and uningestion tests can stay below the SQLite boundary.
+    The fake preserves one-occurrence-at-a-time add/remove semantics so
+    ingestion and uningestion tests can stay below the SQLite boundary.
     """
 
     def __init__(self) -> None:

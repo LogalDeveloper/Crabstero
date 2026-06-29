@@ -117,13 +117,17 @@ async def simcord_member_channel(
 
 @pytest.fixture
 def start_words_for_channel() -> StartWordsForChannel:
-    """Return a reader for persisted Markov start words in one Discord channel."""
+    """Return persisted Markov start-word occurrences for one Discord channel."""
 
     async def read(db: Database, channel_id: int) -> list[str]:
         async with db._connection.execute(
-            "SELECT word FROM markov_start_words WHERE channel_id = ? ORDER BY word",
+            "SELECT word, occurrences"
+            " FROM markov_start_words"
+            " WHERE channel_id = ?"
+            " ORDER BY word",
             (channel_id,),
         ) as cursor:
-            return [str(row[0]) for row in await cursor.fetchall()]
+            rows = await cursor.fetchall()
+        return [str(row[0]) for row in rows for _ in range(int(row[1]))]
 
     return read

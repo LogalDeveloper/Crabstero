@@ -15,13 +15,18 @@
 """Async SQLite database access for Crabstero's persistent storage."""
 
 import asyncio
+import logging
+from collections import Counter
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, NamedTuple, Self
 
 import aiosqlite
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
+    from collections.abc import AsyncIterator, Sequence
+
+
+logger = logging.getLogger(__name__)
 
 
 class StartWord(NamedTuple):
@@ -49,29 +54,35 @@ class ChannelImage(NamedTuple):
     url: str
 
 
-# SQL statements for creating the database schema.
-_SCHEMA = """
+# SQLite schema version. Version 0 is the original duplicate-row Markov schema.
+_CURRENT_SCHEMA_VERSION = 1
+
+
+_CURRENT_MARKOV_TABLES_SQL = """
 -- Markov chain starting words.
--- Each row represents one occurrence. Duplicates represent frequency weight.
+-- Occurrence counters represent frequency weight per contributing user.
 CREATE TABLE IF NOT EXISTS markov_start_words (
     channel_id INTEGER NOT NULL,
     user_id INTEGER NOT NULL,
-    word TEXT NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_start_channel ON markov_start_words(channel_id, word);
-CREATE INDEX IF NOT EXISTS idx_start_user ON markov_start_words(user_id);
+    word TEXT NOT NULL,
+    occurrences INTEGER NOT NULL CHECK (occurrences > 0),
+    PRIMARY KEY (channel_id, word, user_id)
+) WITHOUT ROWID;
 
 -- Markov chain word transitions.
--- Each row represents one occurrence. Duplicates represent frequency weight.
+-- Occurrence counters represent frequency weight per contributing user.
 CREATE TABLE IF NOT EXISTS markov_transitions (
     channel_id INTEGER NOT NULL,
     user_id INTEGER NOT NULL,
     word TEXT NOT NULL,
-    next_word TEXT NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_transitions_channel_word
-    ON markov_transitions(channel_id, word);
-CREATE INDEX IF NOT EXISTS idx_transitions_user ON markov_transitions(user_id);
+    next_word TEXT NOT NULL,
+    occurrences INTEGER NOT NULL CHECK (occurrences > 0),
+    PRIMARY KEY (channel_id, word, next_word, user_id)
+) WITHOUT ROWID;
+"""
+
+
+_CURRENT_NON_MARKOV_TABLES_SQL = """
 
 -- Image URLs per channel.
 CREATE TABLE IF NOT EXISTS channel_images (
@@ -79,8 +90,6 @@ CREATE TABLE IF NOT EXISTS channel_images (
     user_id INTEGER NOT NULL,
     url TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_images_channel ON channel_images(channel_id);
-CREATE INDEX IF NOT EXISTS idx_images_user ON channel_images(user_id);
 
 -- Flags for channels, servers, and users.
 CREATE TABLE IF NOT EXISTS flags (
@@ -95,6 +104,99 @@ CREATE TABLE IF NOT EXISTS ingested_channels (
     channel_id INTEGER NOT NULL PRIMARY KEY
 );
 """
+
+
+_CURRENT_INDEXES_SQL = """
+CREATE INDEX IF NOT EXISTS idx_start_user ON markov_start_words(user_id);
+CREATE INDEX IF NOT EXISTS idx_transitions_user ON markov_transitions(user_id);
+CREATE INDEX IF NOT EXISTS idx_images_channel ON channel_images(channel_id);
+CREATE INDEX IF NOT EXISTS idx_images_user ON channel_images(user_id);
+"""
+
+
+_CREATE_CURRENT_SCHEMA_OBJECTS_SQL = (
+    """
+BEGIN IMMEDIATE;
+"""
+    + _CURRENT_MARKOV_TABLES_SQL
+    + _CURRENT_NON_MARKOV_TABLES_SQL
+    + _CURRENT_INDEXES_SQL
+    + """
+COMMIT;
+"""
+)
+
+
+_MIGRATE_LEGACY_MARKOV_TO_COUNTED_ROWS_SQL = (
+    """
+BEGIN IMMEDIATE;
+
+ALTER TABLE markov_start_words RENAME TO markov_start_words_v0;
+ALTER TABLE markov_transitions RENAME TO markov_transitions_v0;
+
+"""
+    + _CURRENT_MARKOV_TABLES_SQL
+    + _CURRENT_NON_MARKOV_TABLES_SQL
+    + """
+
+INSERT INTO markov_start_words (channel_id, user_id, word, occurrences)
+SELECT channel_id, user_id, word, COUNT(*)
+FROM markov_start_words_v0
+GROUP BY channel_id, word, user_id
+ORDER BY channel_id, word, user_id;
+
+INSERT INTO markov_transitions (
+    channel_id,
+    user_id,
+    word,
+    next_word,
+    occurrences
+)
+SELECT channel_id, user_id, word, next_word, COUNT(*)
+FROM markov_transitions_v0
+GROUP BY channel_id, word, next_word, user_id
+ORDER BY channel_id, word, next_word, user_id;
+
+DROP TABLE markov_start_words_v0;
+DROP TABLE markov_transitions_v0;
+
+"""
+    + _CURRENT_INDEXES_SQL
+    + """
+COMMIT;
+"""
+)
+
+
+def _has_expected_markov_primary_keys(
+    start_columns: Sequence[Sequence[object]],
+    transition_columns: Sequence[Sequence[object]],
+) -> bool:
+    """Return whether the Markov tables have the optimized primary keys."""
+    start_primary_keys = {str(row[1]): int(row[5]) for row in start_columns}
+    transition_primary_keys = {str(row[1]): int(row[5]) for row in transition_columns}
+    return start_primary_keys == {
+        "channel_id": 1,
+        "word": 2,
+        "user_id": 3,
+        "occurrences": 0,
+    } and transition_primary_keys == {
+        "channel_id": 1,
+        "word": 2,
+        "next_word": 3,
+        "user_id": 4,
+        "occurrences": 0,
+    }
+
+
+async def _get_table_sql(connection: aiosqlite.Connection, table_name: str) -> str:
+    """Return the SQLite schema SQL for a table."""
+    async with connection.execute(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?",
+        (table_name,),
+    ) as cursor:
+        row = await cursor.fetchone()
+    return str(row[0]) if row else ""
 
 
 class Database:
@@ -140,13 +242,130 @@ class Database:
         :return: A new Database instance ready for use.
         """
         connection = await aiosqlite.connect(path, isolation_level=None)
+        try:
+            # Set synchronous to NORMAL for a balance between safety and speed.
+            await connection.execute("PRAGMA synchronous=NORMAL")
 
-        # Set synchronous to NORMAL for a balance between safety and speed.
-        await connection.execute("PRAGMA synchronous=NORMAL")
+            async with connection.execute("PRAGMA user_version") as cursor:
+                row = await cursor.fetchone()
+            version = int(row[0]) if row else 0
+            if version > _CURRENT_SCHEMA_VERSION:
+                msg = (
+                    f"Database schema version {version} is newer than supported "
+                    f"version {_CURRENT_SCHEMA_VERSION}."
+                )
+                raise RuntimeError(msg)
 
-        # Create the schema tables and indexes if they do not already exist.
-        # executescript auto-commits, so no explicit commit is needed.
-        await connection.executescript(_SCHEMA)
+            async with connection.execute(
+                "SELECT name FROM sqlite_master"
+                " WHERE type = 'table'"
+                " AND name IN ('markov_start_words', 'markov_transitions')",
+            ) as cursor:
+                markov_tables = {str(row[0]) for row in await cursor.fetchall()}
+            has_start_words = "markov_start_words" in markov_tables
+            has_transitions = "markov_transitions" in markov_tables
+            if has_start_words != has_transitions:
+                raise RuntimeError("Database schema is missing a Markov table.")
+
+            has_counted_markov = False
+            has_current_markov = False
+            if has_start_words:
+                async with connection.execute(
+                    "PRAGMA table_info(markov_start_words)",
+                ) as cursor:
+                    start_column_rows = await cursor.fetchall()
+                async with connection.execute(
+                    "PRAGMA table_info(markov_transitions)",
+                ) as cursor:
+                    transition_column_rows = await cursor.fetchall()
+                start_columns = {str(row[1]) for row in start_column_rows}
+                transition_columns = {str(row[1]) for row in transition_column_rows}
+                start_has_occurrences = "occurrences" in start_columns
+                transition_has_occurrences = "occurrences" in transition_columns
+                if start_has_occurrences != transition_has_occurrences:
+                    raise RuntimeError(
+                        "Database schema has mismatched Markov occurrence columns.",
+                    )
+                has_counted_markov = (
+                    start_has_occurrences and transition_has_occurrences
+                )
+                if has_counted_markov:
+                    start_table_sql = await _get_table_sql(
+                        connection,
+                        "markov_start_words",
+                    )
+                    transition_table_sql = await _get_table_sql(
+                        connection,
+                        "markov_transitions",
+                    )
+                    has_current_markov = (
+                        _has_expected_markov_primary_keys(
+                            start_column_rows,
+                            transition_column_rows,
+                        )
+                        and "WITHOUT ROWID" in start_table_sql.upper()
+                        and "WITHOUT ROWID" in transition_table_sql.upper()
+                    )
+                    if not has_current_markov:
+                        raise RuntimeError(
+                            "Database schema has unsupported counted Markov tables.",
+                        )
+
+            needs_markov_count_migration = has_start_words and not has_counted_markov
+            needs_post_migration_vacuum = (
+                has_current_markov and version < _CURRENT_SCHEMA_VERSION
+            )
+            if version == _CURRENT_SCHEMA_VERSION and needs_markov_count_migration:
+                raise RuntimeError(
+                    "Database schema version 1 has legacy Markov tables.",
+                )
+
+            if not needs_markov_count_migration:
+                schema_script = _CREATE_CURRENT_SCHEMA_OBJECTS_SQL
+            else:
+                logger.info(
+                    "Migrating legacy Markov tables to counted occurrences; "
+                    "startup will continue after migration completes.",
+                )
+                schema_script = _MIGRATE_LEGACY_MARKOV_TO_COUNTED_ROWS_SQL
+
+            try:
+                await connection.executescript(schema_script)
+            except BaseException:
+                await connection.rollback()
+                raise
+            if needs_markov_count_migration:
+                logger.info("Legacy Markov table migration complete.")
+            if needs_markov_count_migration or needs_post_migration_vacuum:
+                if needs_post_migration_vacuum:
+                    logger.info(
+                        "Retrying post-migration database vacuum before marking "
+                        "schema version current.",
+                    )
+                logger.info(
+                    "Vacuuming database after legacy Markov table migration; "
+                    "startup will continue after vacuum completes.",
+                )
+                try:
+                    async with connection.execute("VACUUM"):
+                        pass
+                except Exception:
+                    logger.exception(
+                        "Database vacuum failed after legacy Markov table "
+                        "migration; continuing with migrated database.",
+                    )
+                else:
+                    logger.info("Post-migration database vacuum complete.")
+                    await connection.execute(
+                        f"PRAGMA user_version = {_CURRENT_SCHEMA_VERSION}",
+                    )
+            elif version < _CURRENT_SCHEMA_VERSION:
+                await connection.execute(
+                    f"PRAGMA user_version = {_CURRENT_SCHEMA_VERSION}",
+                )
+        except BaseException:
+            await connection.close()
+            raise
 
         return cls(connection)
 
@@ -159,9 +378,9 @@ class Database:
         start_words: list[StartWord],
         transitions: list[Transition],
     ) -> None:
-        """Insert Markov start words and transitions, then commit.
+        """Insert or increment Markov start words and transitions, then commit.
 
-        Both inserts happen in a single transaction.
+        Both writes happen in a single transaction.
 
         :param start_words: Starting word entries to insert.
         :param transitions: Transition entries to insert.
@@ -169,18 +388,32 @@ class Database:
         if start_words or transitions:
             async with self._transaction():
                 if start_words:
+                    counted_start_words = [
+                        (*start_word, occurrences)
+                        for start_word, occurrences in Counter(start_words).items()
+                    ]
                     await self._connection.executemany(
                         "INSERT INTO markov_start_words"
-                        " (channel_id, user_id, word)"
-                        " VALUES (?, ?, ?)",
-                        start_words,
+                        " (channel_id, user_id, word, occurrences)"
+                        " VALUES (?, ?, ?, ?)"
+                        " ON CONFLICT(channel_id, word, user_id)"
+                        " DO UPDATE SET occurrences ="
+                        " markov_start_words.occurrences + excluded.occurrences",
+                        counted_start_words,
                     )
                 if transitions:
+                    counted_transitions = [
+                        (*transition, occurrences)
+                        for transition, occurrences in Counter(transitions).items()
+                    ]
                     await self._connection.executemany(
                         "INSERT INTO markov_transitions"
-                        " (channel_id, user_id, word, next_word)"
-                        " VALUES (?, ?, ?, ?)",
-                        transitions,
+                        " (channel_id, user_id, word, next_word, occurrences)"
+                        " VALUES (?, ?, ?, ?, ?)"
+                        " ON CONFLICT(channel_id, word, next_word, user_id)"
+                        " DO UPDATE SET occurrences ="
+                        " markov_transitions.occurrences + excluded.occurrences",
+                        counted_transitions,
                     )
 
     async def remove_markov_data(
@@ -188,9 +421,9 @@ class Database:
         start_words: list[StartWord],
         transitions: list[Transition],
     ) -> None:
-        """Remove one matching row per entry from the Markov tables.
+        """Remove one matching occurrence per entry from the Markov tables.
 
-        Each entry removes at most one duplicate row, preserving remaining
+        Each entry removes at most one counted occurrence, preserving remaining
         frequency weight.
 
         :param start_words: Starting word entries to remove.
@@ -199,30 +432,69 @@ class Database:
         if start_words or transitions:
             async with self._transaction():
                 if start_words:
+                    counted_start_words = [
+                        (*start_word, occurrences)
+                        for start_word, occurrences in Counter(start_words).items()
+                    ]
                     await self._connection.executemany(
                         "DELETE FROM markov_start_words"
-                        " WHERE rowid = ("
-                        "   SELECT rowid FROM markov_start_words"
-                        "   WHERE channel_id = ?"
-                        "   AND user_id = ?"
-                        "   AND word = ?"
-                        "   LIMIT 1"
-                        " )",
-                        start_words,
+                        " WHERE channel_id = ?"
+                        " AND user_id = ?"
+                        " AND word = ?"
+                        " AND occurrences <= ?",
+                        counted_start_words,
+                    )
+                    await self._connection.executemany(
+                        "UPDATE markov_start_words"
+                        " SET occurrences = occurrences - ?"
+                        " WHERE channel_id = ?"
+                        " AND user_id = ?"
+                        " AND word = ?"
+                        " AND occurrences > ?",
+                        [
+                            (
+                                occurrences,
+                                start_word.channel_id,
+                                start_word.user_id,
+                                start_word.word,
+                                occurrences,
+                            )
+                            for start_word, occurrences in Counter(start_words).items()
+                        ],
                     )
                 if transitions:
+                    counted_transitions = [
+                        (*transition, occurrences)
+                        for transition, occurrences in Counter(transitions).items()
+                    ]
                     await self._connection.executemany(
                         "DELETE FROM markov_transitions"
-                        " WHERE rowid = ("
-                        "   SELECT rowid"
-                        "   FROM markov_transitions"
-                        "   WHERE channel_id = ?"
-                        "   AND user_id = ?"
-                        "   AND word = ?"
-                        "   AND next_word = ?"
-                        "   LIMIT 1"
-                        " )",
-                        transitions,
+                        " WHERE channel_id = ?"
+                        " AND user_id = ?"
+                        " AND word = ?"
+                        " AND next_word = ?"
+                        " AND occurrences <= ?",
+                        counted_transitions,
+                    )
+                    await self._connection.executemany(
+                        "UPDATE markov_transitions"
+                        " SET occurrences = occurrences - ?"
+                        " WHERE channel_id = ?"
+                        " AND user_id = ?"
+                        " AND word = ?"
+                        " AND next_word = ?"
+                        " AND occurrences > ?",
+                        [
+                            (
+                                occurrences,
+                                transition.channel_id,
+                                transition.user_id,
+                                transition.word,
+                                transition.next_word,
+                                occurrences,
+                            )
+                            for transition, occurrences in Counter(transitions).items()
+                        ],
                     )
 
     async def get_random_start_word(self, channel_id: int) -> str | None:
@@ -233,10 +505,42 @@ class Database:
         :param channel_id: The Discord channel ID.
         :return: A random starting word, or None if none exist.
         """
+        # Mask RANDOM() instead of ABS(RANDOM()) to avoid signed 64-bit overflow.
         async with self._connection.execute(
-            "SELECT word FROM markov_start_words"
-            " WHERE channel_id = ?"
-            " ORDER BY RANDOM() LIMIT 1",
+            """
+            WITH weighted AS (
+                SELECT word, SUM(occurrences) AS weight
+                FROM markov_start_words
+                WHERE channel_id = ?
+                GROUP BY word
+            ),
+            total AS (
+                SELECT SUM(weight) AS total_weight
+                FROM weighted
+            ),
+            choice AS MATERIALIZED (
+                SELECT
+                    ((RANDOM() & 9223372036854775807) % total_weight) + 1
+                    AS selected_weight
+                FROM total
+                WHERE total_weight > 0
+            ),
+            ranked AS (
+                SELECT
+                    word,
+                    SUM(weight) OVER (
+                        ORDER BY word
+                        ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+                    ) AS cumulative_weight
+                FROM weighted
+            )
+            SELECT word
+            FROM ranked
+            CROSS JOIN choice
+            WHERE cumulative_weight >= selected_weight
+            ORDER BY cumulative_weight
+            LIMIT 1
+            """,
             (channel_id,),
         ) as cursor:
             row = await cursor.fetchone()
@@ -251,10 +555,42 @@ class Database:
         :param word: The current word to find a transition for.
         :return: A random next word, or None if no transitions exist.
         """
+        # Mask RANDOM() instead of ABS(RANDOM()) to avoid signed 64-bit overflow.
         async with self._connection.execute(
-            "SELECT next_word FROM markov_transitions"
-            " WHERE channel_id = ? AND word = ?"
-            " ORDER BY RANDOM() LIMIT 1",
+            """
+            WITH weighted AS (
+                SELECT next_word, SUM(occurrences) AS weight
+                FROM markov_transitions
+                WHERE channel_id = ? AND word = ?
+                GROUP BY next_word
+            ),
+            total AS (
+                SELECT SUM(weight) AS total_weight
+                FROM weighted
+            ),
+            choice AS MATERIALIZED (
+                SELECT
+                    ((RANDOM() & 9223372036854775807) % total_weight) + 1
+                    AS selected_weight
+                FROM total
+                WHERE total_weight > 0
+            ),
+            ranked AS (
+                SELECT
+                    next_word,
+                    SUM(weight) OVER (
+                        ORDER BY next_word
+                        ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+                    ) AS cumulative_weight
+                FROM weighted
+            )
+            SELECT next_word
+            FROM ranked
+            CROSS JOIN choice
+            WHERE cumulative_weight >= selected_weight
+            ORDER BY cumulative_weight
+            LIMIT 1
+            """,
             (channel_id, word),
         ) as cursor:
             row = await cursor.fetchone()
@@ -276,12 +612,44 @@ class Database:
         :param word: The current word to find a completing transition for.
         :return: A random completing next word, or None if none exist.
         """
+        # Mask RANDOM() instead of ABS(RANDOM()) to avoid signed 64-bit overflow.
         async with self._connection.execute(
-            "SELECT next_word FROM markov_transitions"
-            " WHERE channel_id = ? AND word = ?"
-            " AND SUBSTR(next_word, -1, 1)"
-            " IN ('.', '!', '?', '§')"
-            " ORDER BY RANDOM() LIMIT 1",
+            """
+            WITH weighted AS (
+                SELECT next_word, SUM(occurrences) AS weight
+                FROM markov_transitions
+                WHERE channel_id = ?
+                AND word = ?
+                AND SUBSTR(next_word, -1, 1) IN ('.', '!', '?', '§')
+                GROUP BY next_word
+            ),
+            total AS (
+                SELECT SUM(weight) AS total_weight
+                FROM weighted
+            ),
+            choice AS MATERIALIZED (
+                SELECT
+                    ((RANDOM() & 9223372036854775807) % total_weight) + 1
+                    AS selected_weight
+                FROM total
+                WHERE total_weight > 0
+            ),
+            ranked AS (
+                SELECT
+                    next_word,
+                    SUM(weight) OVER (
+                        ORDER BY next_word
+                        ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+                    ) AS cumulative_weight
+                FROM weighted
+            )
+            SELECT next_word
+            FROM ranked
+            CROSS JOIN choice
+            WHERE cumulative_weight >= selected_weight
+            ORDER BY cumulative_weight
+            LIMIT 1
+            """,
             (channel_id, word),
         ) as cursor:
             row = await cursor.fetchone()

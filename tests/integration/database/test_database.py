@@ -126,12 +126,11 @@ class TestConnect:
             " WHERE type = 'table'"
             " AND name IN ('markov_start_words', 'markov_transitions')",
         ) as cursor:
-            table_sql = {
-                str(row[0]): str(row[1]) for row in await cursor.fetchall()
-            }
-        assert "occurrences INTEGER NOT NULL CHECK (occurrences > 0)" in table_sql[
-            "markov_start_words"
-        ]
+            table_sql = {str(row[0]): str(row[1]) for row in await cursor.fetchall()}
+        assert (
+            "occurrences INTEGER NOT NULL CHECK (occurrences > 0)"
+            in table_sql["markov_start_words"]
+        )
         assert "WITHOUT ROWID" in table_sql["markov_start_words"]
         assert "WITHOUT ROWID" in table_sql["markov_transitions"]
 
@@ -359,8 +358,7 @@ class TestConnect:
         with caplog.at_level(logging.INFO, logger="crabstero.database"):
             migrated = await Database.connect(db_path)
         assert (
-            "Database vacuum failed after legacy Markov table migration"
-            in caplog.text
+            "Database vacuum failed after legacy Markov table migration" in caplog.text
         )
         assert vacuum_failures == 1
         try:

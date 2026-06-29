@@ -18,7 +18,7 @@ import asyncio
 import logging
 from collections import Counter
 from contextlib import asynccontextmanager
-from typing import TYPE_CHECKING, NamedTuple, Self
+from typing import TYPE_CHECKING, NamedTuple, Self, cast
 
 import aiosqlite
 
@@ -173,8 +173,10 @@ def _has_expected_markov_primary_keys(
     transition_columns: Sequence[Sequence[object]],
 ) -> bool:
     """Return whether the Markov tables have the optimized primary keys."""
-    start_primary_keys = {str(row[1]): int(row[5]) for row in start_columns}
-    transition_primary_keys = {str(row[1]): int(row[5]) for row in transition_columns}
+    start_primary_keys = {str(row[1]): cast("int", row[5]) for row in start_columns}
+    transition_primary_keys = {
+        str(row[1]): cast("int", row[5]) for row in transition_columns
+    }
     return start_primary_keys == {
         "channel_id": 1,
         "word": 2,
@@ -273,11 +275,13 @@ class Database:
                 async with connection.execute(
                     "PRAGMA table_info(markov_start_words)",
                 ) as cursor:
-                    start_column_rows = await cursor.fetchall()
+                    start_column_rows = [tuple(row) for row in await cursor.fetchall()]
                 async with connection.execute(
                     "PRAGMA table_info(markov_transitions)",
                 ) as cursor:
-                    transition_column_rows = await cursor.fetchall()
+                    transition_column_rows = [
+                        tuple(row) for row in await cursor.fetchall()
+                    ]
                 start_columns = {str(row[1]) for row in start_column_rows}
                 transition_columns = {str(row[1]) for row in transition_column_rows}
                 start_has_occurrences = "occurrences" in start_columns

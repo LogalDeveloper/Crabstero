@@ -77,7 +77,7 @@ async def reply_to_message(db: Database, message: discord.Message) -> None:
         and channel.permissions_for(guild.me).embed_links
     ):
         embed = discord.Embed(
-            title=await markov.generate(db, channel_id, soft_limit=200, hard_limit=300),
+            title=await markov.generate(db, channel_id, soft_limit=200, hard_limit=256),
             description=await markov.generate(
                 db,
                 channel_id,

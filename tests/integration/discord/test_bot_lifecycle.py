@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING, Any, cast
 import discord
 import pytest
 from discord import app_commands
+from discord.ext import commands
 from simcord import run
 
 from crabstero import metrics
@@ -38,6 +39,37 @@ if TYPE_CHECKING:
 def _counter_value(counter: Any, **labels: str) -> float:
     """Return the current value for a labelled Prometheus counter."""
     return float(counter.labels(**labels)._value.get())
+
+
+class _LifecycleResource:
+    """Resource double that records lifecycle cleanup calls."""
+
+    def __init__(
+        self,
+        name: str,
+        events: list[str],
+        *,
+        fail_once: bool = False,
+    ) -> None:
+        """Store the event name and shared event log."""
+        self._name = name
+        self._events = events
+        self._fail_once = fail_once
+
+    async def _record(self) -> None:
+        """Record a cleanup call and optionally fail once."""
+        self._events.append(self._name)
+        if self._fail_once:
+            self._fail_once = False
+            raise RuntimeError(f"{self._name} cleanup failed")
+
+    async def close(self) -> None:
+        """Record a close call."""
+        await self._record()
+
+    async def stop(self) -> None:
+        """Record a stop call."""
+        await self._record()
 
 
 class TestSetupHook:
@@ -86,6 +118,88 @@ class TestSetupHook:
         finally:
             bot.ws = None  # type: ignore[assignment]
             await bot.close()
+
+
+class TestClose:
+    """Bot shutdown ordering."""
+
+    async def test_closes_discord_before_local_resources(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Discord is closed before local resources are released."""
+        events: list[str] = []
+        bot = Crabstero(str(tmp_path / "close-order.db"))
+        original_close = commands.Bot.close
+
+        async def close_discord(self: commands.Bot) -> None:
+            events.append("discord")
+            await original_close(self)
+
+        monkeypatch.setattr(commands.Bot, "close", close_discord)
+        cast("Any", bot).ingest_cache = _LifecycleResource("cache", events)
+        cast("Any", bot)._metrics_server = _LifecycleResource("metrics", events)
+        cast("Any", bot)._db = _LifecycleResource("db", events)
+
+        await bot.close()
+
+        assert events == ["discord", "cache", "metrics", "db"]
+
+    async def test_local_resources_close_when_discord_close_fails(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Local resources are released even if Discord close raises."""
+        events: list[str] = []
+        bot = Crabstero(str(tmp_path / "close-failure.db"))
+
+        async def close_discord(_self: commands.Bot) -> None:
+            events.append("discord")
+            raise RuntimeError("discord close failed")
+
+        monkeypatch.setattr(commands.Bot, "close", close_discord)
+        cast("Any", bot).ingest_cache = _LifecycleResource("cache", events)
+        cast("Any", bot)._metrics_server = _LifecycleResource("metrics", events)
+        cast("Any", bot)._db = _LifecycleResource("db", events)
+
+        with pytest.raises(RuntimeError, match="discord close failed"):
+            await bot.close()
+
+        assert events == ["discord", "cache", "metrics", "db"]
+
+    async def test_local_resource_cleanup_is_retried_after_local_failure(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Local cleanup can be retried after Discord has already closed."""
+        events: list[str] = []
+        bot = Crabstero(str(tmp_path / "close-retry.db"))
+        original_close = commands.Bot.close
+
+        async def close_discord(self: commands.Bot) -> None:
+            events.append("discord")
+            await original_close(self)
+
+        monkeypatch.setattr(commands.Bot, "close", close_discord)
+        cast("Any", bot).ingest_cache = _LifecycleResource(
+            "cache",
+            events,
+            fail_once=True,
+        )
+        cast("Any", bot)._metrics_server = _LifecycleResource("metrics", events)
+        cast("Any", bot)._db = _LifecycleResource("db", events)
+
+        with pytest.raises(RuntimeError, match="cache cleanup failed"):
+            await bot.close()
+
+        assert events == ["discord", "cache", "metrics", "db"]
+
+        await bot.close()
+
+        assert events == ["discord", "cache", "metrics", "db", "cache"]
 
 
 class TestMetrics:

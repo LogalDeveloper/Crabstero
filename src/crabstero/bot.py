@@ -229,8 +229,9 @@ class Crabstero(commands.Bot):
 
     @override
     async def close(self) -> None:
-        """Cancel ingestion tasks, close the database, and then the bot connection."""
+        """Cancel ingestion tasks, close Discord, and release local resources."""
         if self.is_closed():
+            await self._close_local_resources()
             return
         logger.info("Shutting down Crabstero...")
         tasks = list(self._ingestion_tasks.values())
@@ -238,12 +239,43 @@ class Crabstero(commands.Bot):
         for task in tasks:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
-        await self.ingest_cache.stop()
+        try:
+            await super().close()
+        finally:
+            await self._close_local_resources()
+
+    async def _close_local_resources(self) -> None:
+        """Release local resources, attempting each cleanup even if one fails."""
+        errors: list[Exception] = []
+
+        try:
+            await self.ingest_cache.stop()
+        except Exception as exc:  # noqa: BLE001
+            errors.append(exc)
+
         if self._metrics_server is not None:
-            await self._metrics_server.stop()
+            try:
+                await self._metrics_server.stop()
+            except Exception as exc:  # noqa: BLE001
+                errors.append(exc)
+            else:
+                self._metrics_server = None
+
         if self._db is not None:
-            await self._db.close()
-        await super().close()
+            try:
+                await self._db.close()
+            except Exception as exc:  # noqa: BLE001
+                errors.append(exc)
+            else:
+                self._db = None
+
+        if len(errors) == 1:
+            raise errors[0]
+        if errors:
+            raise ExceptionGroup(
+                "Errors occurred while closing local resources.",
+                errors,
+            )
 
     def queue_channel_for_ingestion(self, channel: IngestableChannel) -> None:
         """Create a background task to ingest a single channel.

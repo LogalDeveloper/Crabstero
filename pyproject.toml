@@ -30,7 +30,7 @@ dev = [
     "pytest-asyncio>=1.4.0",
     "pytest-cov>=7.1.0",
     "ruff>=0.15.20",
-    "simcord>=1.0.1",
+    "simcord>=1.1.0",
 ]
 
 [tool.uv]

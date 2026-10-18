@@ -14,6 +14,7 @@
 
 """Simcord integration tests for Discord message events."""
 
+import asyncio
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
 
@@ -31,6 +32,7 @@ if TYPE_CHECKING:
 
     from simcord import Env
 
+    from crabstero.cache import IngestCache
     from crabstero.database import Database
     from tests.integration.discord.conftest import (
         MakeSimcordMemberChannel,
@@ -137,10 +139,25 @@ class TestMessageIngestion:
         simcord_member_channel: SimcordMemberChannel,
         crabstero_bot: Crabstero,
         start_words_for_channel: StartWordsForChannel,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Embed titles, descriptions, and image URLs are ingested."""
         member = simcord_member_channel.member
         channel = simcord_member_channel.channel
+        ingestion_complete = asyncio.Event()
+
+        async def ingest_and_notify(
+            db: Database,
+            message: discord.Message,
+            cache: IngestCache | None = None,
+        ) -> None:
+            await ingest_message(db, message, cache)
+            ingestion_complete.set()
+
+        monkeypatch.setattr(
+            "crabstero.listeners.message.ingest_message",
+            ingest_and_notify,
+        )
 
         simcord_env.backend.create_message(
             channel.id,
@@ -154,6 +171,9 @@ class TestMessageIngestion:
             ],
         )
         await simcord_env.settle()
+        # Simcord can consider a handler waiting on SQLite's worker thread idle.
+        async with asyncio.timeout(5):
+            await ingestion_complete.wait()
 
         assert await start_words_for_channel(crabstero_bot.db, channel.id) == [
             "Description",

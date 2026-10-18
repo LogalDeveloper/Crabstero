@@ -16,8 +16,30 @@ defaults:
     shell: bash
 
 jobs:
-  audit:
-    name: Audit Dependencies
+  codeql:
+    name: CodeQL
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
+        with:
+          languages: python
+          build-mode: none
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
+
+  dependency-audit:
+    name: Dependency Audit
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -44,8 +66,8 @@ jobs:
       - name: Audit dependencies with pip-audit
         run: uv run pip-audit --skip-editable
 
-  formatting:
-    name: Formatting
+  format:
+    name: Format
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -72,8 +94,8 @@ jobs:
       - name: Check formatting with Ruff
         run: uv run ruff format --check --diff .
 
-  linting:
-    name: Linting
+  lint:
+    name: Lint
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -100,8 +122,36 @@ jobs:
       - name: Check linting with Ruff
         run: uv run ruff check .
 
-  tests:
-    name: Tests
+  spellcheck:
+    name: Spell Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version-file: .python-version
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --locked
+
+      - name: Check spelling with codespell
+        run: uv run codespell
+
+  test:
+    name: Test
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -131,8 +181,8 @@ jobs:
       - name: Report code coverage
         run: uv run coverage report
 
-  type-checking:
-    name: Type Checking
+  typecheck:
+    name: Type Check
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -158,31 +208,3 @@ jobs:
 
       - name: Check types with Mypy
         run: uv run mypy .
-
-  spelling:
-    name: Spelling
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version-file: .python-version
-
-      - name: Set up uv
-        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
-        with:
-          enable-cache: true
-
-      - name: Install dependencies
-        run: uv sync --locked
-
-      - name: Check spelling with codespell
-        run: uv run codespell

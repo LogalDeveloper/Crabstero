@@ -95,7 +95,7 @@ class Crabstero(commands.Bot):
         GUILD_COUNT.set_function(lambda: len(self.guilds))
         INGESTION_ACTIVE.set_function(lambda: len(self._ingestion_tasks))
 
-        repo_url = "https://git.logal.dev/LogalDeveloper/Crabstero"
+        repo_url = "https://github.com/LogalDeveloper/Crabstero"
         self.http.user_agent = f"DiscordBot ({repo_url}, {crabstero_version})"
 
     @property

@@ -78,14 +78,12 @@ Crabstero learns and replies by restricting the bot role per channel.
 ## Installation
 
 Create a directory for Crabstero, create a Python 3.14 virtual environment, and
-install the package from the project's Gitea package index:
+install the package from PyPI:
 
 ```bash
 mkdir crabstero && cd crabstero
 uv venv --python 3.14
-uv pip install crabstero \
-  --index https://git.logal.dev/api/packages/LogalDeveloper/pypi/simple/ \
-  --default-index https://pypi.org/simple
+uv pip install crabstero
 ```
 
 ## Usage
@@ -125,7 +123,7 @@ Clone the Git repository and use [uv](https://docs.astral.sh/uv/) to sync the
 project environment from the lockfile:
 
 ```bash
-git clone https://git.logal.dev/LogalDeveloper/Crabstero
+git clone https://github.com/LogalDeveloper/Crabstero
 cd Crabstero
 uv sync --locked
 ```
@@ -163,7 +161,7 @@ configuration marks tests automatically based on those directories.
 ## Links
 
 - Project page: <https://logal.dev/projects/crabstero/>
-- Source repository: <https://git.logal.dev/LogalDeveloper/Crabstero>
+- Source repository: <https://github.com/LogalDeveloper/Crabstero>
 
 ## License
 

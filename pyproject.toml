@@ -19,7 +19,7 @@ dependencies = [
 crabstero = "crabstero.cli:main"
 
 [project.urls]
-Repository = "https://git.logal.dev/LogalDeveloper/Crabstero"
+Repository = "https://github.com/LogalDeveloper/Crabstero"
 
 [dependency-groups]
 dev = [
@@ -32,10 +32,6 @@ dev = [
     "ruff>=0.15.20",
     "simcord>=1.1.0",
 ]
-
-[tool.uv]
-extra-index-url = ["https://git.logal.dev/api/packages/LogalDeveloper/pypi/simple/"]
-publish-url = "https://git.logal.dev/api/packages/LogalDeveloper/pypi"
 
 [build-system]
 requires = ["hatchling>=1.30.1", "hatch-vcs>=0.5.0"]

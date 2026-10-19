@@ -30,8 +30,10 @@ invite the official hosted instance instead of running your own bot, see the
 ## Requirements
 
 - A Linux host or virtual machine.
-- [uv](https://docs.astral.sh/uv/getting-started/installation/) for Python
-  management and the install/run commands below.
+- Python 3.14 or newer.
+- [uv](https://docs.astral.sh/uv/getting-started/installation/) for project and
+  Python management; it can download the requested interpreter, so Python does
+  not need to be installed system-wide.
 - A Discord application with a bot token and the Message Content intent enabled.
 - Discord channel permissions to view channels, read message history, and send
   messages where Crabstero should operate.
@@ -77,12 +79,12 @@ Crabstero learns and replies by restricting the bot role per channel.
 
 ## Installation
 
-Create a directory for Crabstero, create a Python 3.14 virtual environment, and
+Create a directory for Crabstero, create a Python 3.15 virtual environment, and
 install the package from PyPI:
 
 ```bash
 mkdir crabstero && cd crabstero
-uv venv --python 3.14
+uv venv --python 3.15
 uv pip install crabstero
 ```
 

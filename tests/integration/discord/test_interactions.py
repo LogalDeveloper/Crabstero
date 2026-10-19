@@ -114,6 +114,7 @@ class TestPingMe:
 
     async def test_second_call_opts_out(
         self,
+        simcord_env: Env,
         simcord_member_channel: SimcordMemberChannel,
         crabstero_bot: Crabstero,
     ) -> None:
@@ -123,6 +124,7 @@ class TestPingMe:
         await member.slash(channel, "pingme")
 
         result = await member.slash(channel, "pingme")
+        await simcord_env.settle(idle=1)
 
         assert result.response is not None
         assert result.response.ephemeral is True

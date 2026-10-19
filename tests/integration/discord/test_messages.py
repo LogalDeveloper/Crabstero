@@ -423,7 +423,7 @@ class TestDeletes:
         ]
 
         simcord_env.backend.bulk_delete_messages(channel.id, [first.id, second.id])
-        await simcord_env.settle()
+        await simcord_env.settle(idle=1)
 
         assert await start_words_for_channel(crabstero_bot.db, channel.id) == []
 

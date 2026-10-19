@@ -125,7 +125,7 @@ project environment from the lockfile:
 ```bash
 git clone https://github.com/LogalDeveloper/Crabstero
 cd Crabstero
-uv sync --locked
+uv sync --locked --python 3.15
 ```
 
 The development toolchain uses [Ruff](https://docs.astral.sh/ruff/) for

@@ -2,6 +2,7 @@
 name = "crabstero"
 dynamic = ["version"]
 description = "The simple nonversation Discord bot."
+readme = "README.md"
 requires-python = ">=3.14"
 license = "Apache-2.0"
 authors = [

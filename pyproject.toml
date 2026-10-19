@@ -11,9 +11,9 @@ authors = [
 dependencies = [
     "discord.py>=2.7.1",
     "aiosqlite>=0.22.1",
-    "aiohttp>=3.14.1",
-    "prometheus-client>=0.25.0",
-    "uvloop>=0.22.1",
+    "aiohttp>=3.14.5",
+    "prometheus-client>=0.26.0",
+    "uvloop>=0.23.0",
 ]
 
 [project.scripts]
@@ -24,18 +24,18 @@ Repository = "https://github.com/LogalDeveloper/Crabstero"
 
 [dependency-groups]
 dev = [
-    "codespell>=2.4.2",
-    "mypy>=2.1.0",
+    "codespell>=2.4.3",
+    "mypy>=2.4.0",
     "pip-audit>=2.10.1",
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
     "pytest-cov>=7.1.0",
-    "ruff>=0.15.20",
-    "simcord>=1.1.0",
+    "ruff>=0.17.1",
+    "simcord>=3.1.0",
 ]
 
 [build-system]
-requires = ["hatchling>=1.30.1", "hatch-vcs>=0.5.0"]
+requires = ["hatchling>=1.32.4", "hatch-vcs>=0.5.0"]
 build-backend = "hatchling.build"
 
 [tool.hatch.version]

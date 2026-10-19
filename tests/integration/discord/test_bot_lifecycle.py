@@ -98,7 +98,9 @@ class TestSetupHook:
         assert {name for name, _ in commands} == {"forgetme", "pingme"}
 
         application_id = simcord_env.backend.application_id
-        http_routes = [f"{method} {path}" for method, path, _ in simcord_env.http_log]
+        http_routes = [
+            f"{request.method} {request.path}" for request in simcord_env.http_requests
+        ]
         assert f"GET /applications/{application_id}/commands" in http_routes
         assert f"PUT /applications/{application_id}/commands" in http_routes
 
@@ -328,7 +330,7 @@ class TestCommandErrors:
         tmp_path: Path,
         make_simcord_member_channel: MakeSimcordMemberChannel,
     ) -> None:
-        """A command that has already acknowledged uses a followup fallback."""
+        """An error after deferring completes the original ephemeral response."""
         bot = Crabstero(str(tmp_path / "deferred-command-errors.db"))
 
         @app_commands.command(
@@ -347,12 +349,20 @@ class TestCommandErrors:
 
                 result = await context.member.slash(context.channel, "deferboom")
 
-                assert result.deferred is True
-                assert result.response is None
-                assert len(result.followups) == 1
-                followup = result.followups[0]
-                assert followup.ephemeral is True
-                assert followup.content == (
+                callback_types = [
+                    request.json["type"]
+                    for request in env.http_requests
+                    if request.path.endswith("/callback") and request.json is not None
+                ]
+                assert callback_types == [
+                    discord.InteractionResponseType.deferred_channel_message.value
+                ]
+                assert result.acknowledged is True
+                assert result.deferred is False
+                assert result.followups == []
+                assert result.response is not None
+                assert result.response.ephemeral is True
+                assert result.response.content == (
                     "I encountered an error while processing this command."
                     " Please try again later."
                 )

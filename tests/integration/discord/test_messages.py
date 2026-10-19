@@ -190,12 +190,18 @@ class TestMessageIngestion:
         crabstero_bot: Crabstero,
         start_words_for_channel: StartWordsForChannel,
     ) -> None:
-        """A message with no content or embeds is ignored."""
+        """An attachment-only message with no content or embeds is ignored."""
         member = simcord_member_channel.member
         channel = simcord_member_channel.channel
 
-        await member.send(channel)
+        message = await member.send(
+            channel,
+            attachments=[("notes.txt", b"Attachment text is not ingested.")],
+        )
 
+        assert message.content == ""
+        assert message.embeds == []
+        assert len(message.attachments) == 1
         assert await start_words_for_channel(crabstero_bot.db, channel.id) == []
 
     async def test_ingest_only_mode_ingests_without_replying(

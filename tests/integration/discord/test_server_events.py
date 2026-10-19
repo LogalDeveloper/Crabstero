@@ -14,6 +14,7 @@
 
 """Simcord integration tests for server event ingestion triggers."""
 
+import asyncio
 from typing import TYPE_CHECKING
 
 import discord
@@ -61,6 +62,8 @@ class TestGuildEvents:
         assert cached_guild is not None
 
         await server_events_cog.on_guild_available(cached_guild)
+        async with asyncio.timeout(5):
+            await asyncio.gather(*server_events_cog.bot._ingestion_tasks.values())
         await simcord_env.settle()
 
         assert await server_events_cog.bot.db.is_channel_ingested(text.id)
@@ -79,10 +82,14 @@ class TestGuildEvents:
         assert cached_guild is not None
 
         await server_events_cog.on_guild_join(cached_guild)
+        async with asyncio.timeout(5):
+            await asyncio.gather(*server_events_cog.bot._ingestion_tasks.values())
         await simcord_env.settle()
 
         assert await server_events_cog.bot.db.is_channel_ingested(channel.id)
-        http_routes = [f"{method} {path}" for method, path, _ in simcord_env.http_log]
+        http_routes = [
+            f"{request.method} {request.path}" for request in simcord_env.http_requests
+        ]
         assert "GET /oauth2/applications/@me" in http_routes
         assert "POST /users/@me/channels" in http_routes
         assert any(route.endswith("/messages") for route in http_routes)

@@ -1,0 +1,110 @@
+name: Migrate Legacy PyPI Releases
+
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: pypi-crabstero-migration
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  migrate:
+    name: Build and publish historical releases
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: pypi
+      url: https://pypi.org/project/crabstero/
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout repository and release tags
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+        with:
+          enable-cache: false
+
+      - name: Build historical release tags
+        run: |
+          tags=(
+            v1.0.0 v1.1.0 v1.2.0 v1.2.1 v1.2.2 v1.2.3
+            v1.2.4 v1.2.5 v1.2.6 v1.2.7 v1.3.0
+          )
+          build_root="$RUNNER_TEMP/crabstero-builds"
+          mkdir -p "$build_root" dist
+
+          for tag in "${tags[@]}"; do
+            source_dir="$build_root/$tag"
+            git worktree add --detach "$source_dir" "refs/tags/$tag"
+            uv build --no-config --no-sources \
+              --default-index https://pypi.org/simple/ \
+              --out-dir "$GITHUB_WORKSPACE/dist" "$source_dir"
+            test -f "dist/crabstero-${tag#v}-py3-none-any.whl"
+            test -f "dist/crabstero-${tag#v}.tar.gz"
+          done
+
+      - name: Record built distribution hashes
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          from pathlib import Path
+
+          artifacts = sorted(Path("dist").glob("*.whl")) + sorted(Path("dist").glob("*.tar.gz"))
+          if len(artifacts) != 22:
+              raise RuntimeError("Expected a wheel and source archive for each of the 11 release tags")
+          manifest = {
+              artifact.name: hashlib.sha256(artifact.read_bytes()).hexdigest()
+              for artifact in artifacts
+          }
+
+          Path("migration-manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+          PY
+
+      - name: Validate distribution metadata
+        run: uvx --from twine twine check dist/*
+
+      - name: Publish built distributions to PyPI
+        run: >-
+          uv publish --no-config --trusted-publishing always
+          --publish-url https://upload.pypi.org/legacy/
+          --check-url https://pypi.org/simple/ dist/*
+
+      - name: Verify migrated distributions on PyPI
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from urllib.request import urlopen
+
+          expected = json.loads(Path("migration-manifest.json").read_text(encoding="utf-8"))
+          with urlopen("https://pypi.org/pypi/crabstero/json", timeout=60) as response:
+              metadata = json.load(response)
+          published = {
+              artifact["filename"]: artifact["digests"]["sha256"]
+              for artifacts in metadata["releases"].values()
+              for artifact in artifacts
+          }
+          for filename, digest in expected.items():
+              if published.get(filename) != digest:
+                  raise RuntimeError(f"Missing or different distribution on PyPI: {filename}")
+          print(f"Verified all {len(expected)} migrated distributions on PyPI")
+          PY

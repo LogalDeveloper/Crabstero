@@ -1231,14 +1231,14 @@ wheels = [
 
 [[package]]
 name = "simcord"
-version = "3.1.0"
+version = "3.2.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "discord-py" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/6d/76/0b3348bf1c8ce5492f34632c6567d001b8067d79d5fdab5b8a98fae9365f/simcord-3.1.0.tar.gz", hash = "sha256:56fb05721e2ccef160b8fe56d40fb85320429150c5cdbaf7c60d6a1718e4690d", size = 24272895, upload-time = "2026-10-16T18:26:39.38Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/e6/c5/c7138eb32e4a1a6282e90d64d892cd606aeb62f1b344b154d936cbe11c49/simcord-3.2.1.tar.gz", hash = "sha256:a659b32d5738240489891d392c0661646e7f8062b0f47a8cd432a35de9f15f8b", size = 24479561, upload-time = "2026-10-24T18:44:03.064Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/90/66/3f22b840db5d9522106605d36f9f9e4dd4e003e05cd44ef0d5a0c6d69e9e/simcord-3.1.0-py3-none-any.whl", hash = "sha256:38fe039d0e75b2d1d7aa0f68e344fef963ccbfa586d042001fd32b1b32d52716", size = 19099688, upload-time = "2026-10-16T18:26:36.799Z" },
+    { url = "https://files.pythonhosted.org/packages/78/81/7161de2a197353f6626127c0aa7755df83ee9d0a54db709febba96032aad/simcord-3.2.1-py3-none-any.whl", hash = "sha256:8fe5f89e51423ab5ebdea2e3ca7e79c0ed24759de184a3c98c376db7108f5bf3", size = 19156777, upload-time = "2026-10-24T18:43:59.415Z" },
 ]
 
 [[package]]
